@@ -1,0 +1,98 @@
+# ReceiptLens: week 1 foundation.
+# Three networks mirror a cloud VPC layout:
+#   edge  - the only network with a published port (443)
+#   app   - internal: API tier (week 2+), no route to the Internet
+#   data  - internal: Postgres, RabbitMQ, SeaweedFS (S3), no route to the Internet
+# Secrets come from .env (generate with scripts/init-env.ps1, never committed).
+
+name: receiptlens
+
+networks:
+  edge: {}
+  app:
+    internal: true
+  data:
+    internal: true
+
+volumes:
+  pgdata:
+  rabbitdata:
+  s3data:
+
+services:
+  edge:
+    image: nginx:1.30.7-alpine
+    ports:
+      - "443:443"        # the ONLY published port in the whole stack
+    volumes:
+      - ./edge/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./edge/html:/usr/share/nginx/html:ro
+      - ./edge/certs:/etc/nginx/certs:ro
+    networks: [edge, app]
+    mem_limit: 128m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  postgres:
+    image: postgres:18.7-alpine
+    environment:
+      POSTGRES_DB: receiptlens
+      POSTGRES_USER: ${POSTGRES_USER:?run scripts/init-env.ps1}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.ps1}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [data]
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d receiptlens"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.3.8-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?run scripts/init-env.ps1}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?run scripts/init-env.ps1}
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    networks: [data]
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  storage:
+    # SeaweedFS with an S3 API; replaces MinIO (no longer published on Docker Hub).
+    image: chrislusf/seaweedfs:4.54
+    entrypoint: /bin/sh -c
+    # Identities are built from .env at start-up so no key is written into the repo.
+    # api: read/write/list on the receipts bucket only. ocr: read-only on it.
+    command:
+      - |
+        cat > /etc/seaweedfs/s3.json <<EOF
+        {"identities":[
+          {"name":"admin","credentials":[{"accessKey":"${S3_ADMIN_KEY:?run scripts/init-env.ps1}","secretKey":"${S3_ADMIN_SECRET:?run scripts/init-env.ps1}"}],"actions":["Admin","Read","Write","List","Tagging"]},
+          {"name":"api","credentials":[{"accessKey":"${S3_API_KEY:?}","secretKey":"${S3_API_SECRET:?}"}],"actions":["Read:receipts-raw","Write:receipts-raw","List:receipts-raw"]},
+          {"name":"ocr","credentials":[{"accessKey":"${S3_OCR_KEY:?}","secretKey":"${S3_OCR_SECRET:?}"}],"actions":["Read:receipts-raw"]}
+        ]}
+        EOF
+        exec weed server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - s3data:/data
+    networks: [data]
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

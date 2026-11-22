@@ -1,0 +1,24 @@
+﻿# Week 1 verification — 2026-11-22 20:18 — docker 29.9.3
+
+== Services healthy
+edge is healthy (got: healthy)                             PASS
+postgres is healthy (got: healthy)                         PASS
+rabbitmq is healthy (got: healthy)                         PASS
+storage is healthy (got: healthy)                          PASS
+
+== Published ports: the stack exposes only 443
+published ports = 443 (got: 443)                           PASS
+port 443 answers on the host                               PASS
+
+== Edge answers over TLS (verified against the local mkcert CA)
+GET https://localhost/healthz -> ok                        PASS
+
+== Internal networks have no Internet egress
+postgres cannot reach https://example.com                  PASS
+storage cannot reach https://example.com                   PASS
+edge CAN reach the Internet (control)                      PASS
+
+== Edge cannot reach the data tier directly
+edge -> postgres:5432 blocked                              PASS
+
+All checks passed

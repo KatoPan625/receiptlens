@@ -28,9 +28,9 @@
 |---|---|---|
 | **Build a Secure Google Cloud Network** | VPC + subnet riêng, firewall mặc định chặn, VM không IP public, Cloud NAT, IAP, Cloud Armor | 3 mạng Docker: `edge` / `app` / `data`; `app` và `data` đặt `internal: true` (không ra Internet); chỉ edge publish cổng 443; quản trị từ xa qua **Tailscale** thay IAP; **Nginx + ModSecurity + OWASP CRS** và rate limit thay Cloud Armor |
 | **Implementing Cloud Load Balancing for Compute Engine** | Instance template, MIG tự co giãn, health check, Application LB | **HAProxy** chia tải cho N bản sao API, health check `/healthz`, trang stats; **autoscaler** tự viết đọc số liệu Prometheus rồi `docker compose up --scale`; giai đoạn nâng cao: **k3s + HPA** |
-| **Set Up an App Dev Environment** | Cloud Storage, Pub/Sub, Cloud Functions | **MinIO** (S3) phát bucket notification → **RabbitMQ** → worker; dead-letter exchange khi lỗi |
+| **Set Up an App Dev Environment** | Cloud Storage, Pub/Sub, Cloud Functions | **SeaweedFS** (API S3; MinIO đã ngừng phát hành image trên Docker Hub) phát sự kiện file mới → **RabbitMQ** → worker; dead-letter exchange khi lỗi |
 | **Prepare Data for ML APIs** | Vision API, làm sạch dữ liệu | **PaddleOCR** (`lang="vi"`) chạy local → parser chuẩn hoá → dữ liệu có cấu trúc |
-| 4 khoá **Computing Foundations** | IAM, mạng, compute, dữ liệu | Quyền tối thiểu cho từng service (user DB riêng, access key MinIO riêng theo quyền), mạng, giám sát |
+| 4 khoá **Computing Foundations** | IAM, mạng, compute, dữ liệu | Quyền tối thiểu cho từng service (user DB riêng, access key S3 riêng theo bucket), mạng, giám sát |
 
 ---
 
@@ -48,8 +48,8 @@
                  └────────────┬────────────┘
         (1) presigned URL     │      (5) consume receipt.parsed
                               ▼
-   Web / Flutter ── PUT ảnh ──► MinIO bucket receipts-raw     mạng data (internal)
-                                   │ (2) bucket notification
+   Web / Flutter ── PUT ảnh ──► SeaweedFS (S3) receipts-raw  mạng data (internal)
+                                   │ (2) filer notification
                                    ▼
                               RabbitMQ: receipt.uploaded ──► DLX khi lỗi
                                    │ (3)
@@ -64,7 +64,7 @@
 
 **Vì sao worker không ghi thẳng vào DB?** Chỉ API chạm DB → ranh giới quyền rõ ràng; worker chỉ cần quyền đọc bucket và publish hàng đợi.
 
-> Ghi chú: MinIO cần được presigned URL trỏ tới qua edge (route `/storage/` trên Nginx), vì trình duyệt không vào thẳng mạng `data`.
+> Ghi chú: SeaweedFS cần được presigned URL trỏ tới qua edge (route `/storage/` trên Nginx), vì trình duyệt không vào thẳng mạng `data`.
 
 ---
 
@@ -73,7 +73,7 @@
 ### 4.1 Mạng và bảo mật (tuần 1)
 - `compose.yaml` khai báo 3 mạng; container chỉ gắn vào mạng nó cần.
 - Chỉ Nginx publish cổng 443 (TLS bằng chứng chỉ **mkcert** cho local; khi demo qua Cloudflare thì Cloudflare lo TLS).
-- PostgreSQL, MinIO, RabbitMQ: không publish cổng nào ra máy host.
+- PostgreSQL, SeaweedFS, RabbitMQ: không publish cổng nào ra máy host.
 - Bí mật trong `.env` (git-ignore) + Docker secrets; mỗi service một tài khoản riêng.
 - Bằng chứng: `nmap` từ máy khác trong LAN; `docker exec` vào container `data` thử `curl` ra Internet → phải thất bại.
 
@@ -89,7 +89,7 @@
 - Bằng chứng: k6 tăng tải dần, biểu đồ số bản sao + p95.
 
 ### 4.4 Pipeline sự kiện + OCR (tuần 4)
-- MinIO: bucket `receipts-raw`, không public, lifecycle xoá sau 30 ngày; notification AMQP → exchange `receipts`.
+- SeaweedFS: bucket `receipts-raw`, không public, xoá ảnh sau 30 ngày. Sự kiện file mới: filer notification `gocdk_pub_sub` → exchange RabbitMQ (tin dạng protobuf) hoặc webhook JSON → API publish; chốt cách ở tuần này.
 - `ocr-worker`: PaddleOCR (`lang="vi"`, tắt các bước xoay/làm phẳng ảnh nếu không cần) → `receipt_parser` → publish `receipt.parsed`.
 - Queue có dead-letter exchange sau 5 lần lỗi; API consumer ack sau khi ghi DB, idempotent theo `object_key`.
 - Bằng chứng: báo cáo độ chính xác 30 hoá đơn (tổng tiền, ngày, cửa hàng).
@@ -136,10 +136,10 @@ receiptlens/
 | Tuần | Việc | Bàn giao |
 |---|---|---|
 | **0** | Thử PaddleOCR trên 5–10 hoá đơn thật | Biết độ chính xác thực tế trước khi xây |
-| **1** | `compose.yaml`: 3 mạng, Postgres, MinIO, RabbitMQ, Nginx (TLS); Tailscale | `nmap` chỉ thấy 443; container `data` không ra được Internet |
-| **2** | API + DB + presigned upload | Upload ảnh vào MinIO qua API |
+| **1** | `compose.yaml`: 3 mạng, Postgres, SeaweedFS, RabbitMQ, Nginx (TLS); Tailscale | `nmap` chỉ thấy 443; container `data` không ra được Internet |
+| **2** | API + DB + presigned upload | Upload ảnh vào SeaweedFS qua API |
 | **3** | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
-| **4** | MinIO → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu; đạt G2 |
+| **4** | SeaweedFS → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu; đạt G2 |
 | **5** | Dashboard web, Grafana/Loki, CI + Trivy + GHCR | CI xanh; dashboard giám sát |
 | **6** | App Flutter | Chụp và upload từ điện thoại |
 | **7** | Ansible, (tuỳ chọn) k3s, README, video, CV, portfolio | Repo public hoàn chỉnh |
@@ -163,7 +163,7 @@ receiptlens/
 
 | Thành phần | Chi phí |
 |---|---|
-| Docker, PostgreSQL, MinIO, RabbitMQ, Nginx, ModSecurity, HAProxy, PaddleOCR, Prometheus, Grafana, Loki, k3s, Ansible, Flutter | **0đ** (mã nguồn mở) |
+| Docker, PostgreSQL, SeaweedFS, RabbitMQ, Nginx, ModSecurity, HAProxy, PaddleOCR, Prometheus, Grafana, Loki, k3s, Ansible, Flutter | **0đ** (mã nguồn mở) |
 | GitHub repo public + Actions + GHCR | **0đ** |
 | Tailscale (gói cá nhân) | **0đ** |
 | Cloudflare Quick Tunnel (demo tạm, không cần tài khoản, URL thay đổi mỗi lần) | **0đ** |
@@ -179,7 +179,7 @@ Chi phí duy nhất là **tài nguyên máy**: nên có RAM ≥ 8 GB; PaddleOCR 
 |---|---|
 | OCR hoá đơn in nhiệt mờ, sai tổng tiền | Thử ở tuần 0; cho sửa tay; báo cáo độ chính xác thật |
 | Máy yếu, chạy nhiều container chậm | Giới hạn `mem_limit`; tắt Loki/Grafana khi không cần |
-| MinIO presigned URL không vào được từ ngoài | Đặt route `/storage/` qua Nginx, ký URL theo host công khai |
+| Presigned URL của SeaweedFS không vào được từ ngoài | Đặt route `/storage/` qua Nginx, ký URL theo host công khai |
 | Quick Tunnel đổi URL, không đảm bảo uptime | Chỉ dùng khi demo trực tiếp; README dùng video + ảnh |
 | Ảnh hoá đơn chứa thông tin cá nhân | `samples/` git-ignore; bucket không public; fixture phải che thông tin |
 | Quá tải thời gian | Cắt k3s, Loki, Flutter xuống bản 2; giữ lõi tuần 1–5 |
@@ -188,4 +188,4 @@ Chi phí duy nhất là **tài nguyên máy**: nên có RAM ≥ 8 GB; PaddleOCR 
 
 ## 10. Dòng CV khi xong (điền số thật)
 
-> **ReceiptLens**: Self-hosted receipt-OCR platform replicating Google Cloud patterns with open source: segmented Docker networks with an internet-isolated data tier, Nginx + ModSecurity WAF, HAProxy load balancing with a metrics-driven autoscaler, event pipeline MinIO → RabbitMQ → PaddleOCR worker, FastAPI + PostgreSQL, Flutter client, Prometheus/Grafana, CI with Trivy, one-command rebuild via Ansible. p95 < **X** ms at **Y** RPS; **Z**% total-amount accuracy on 30 real receipts.
+> **ReceiptLens**: Self-hosted receipt-OCR platform replicating Google Cloud patterns with open source: segmented Docker networks with an internet-isolated data tier, Nginx + ModSecurity WAF, HAProxy load balancing with a metrics-driven autoscaler, event pipeline SeaweedFS (S3) → RabbitMQ → PaddleOCR worker, FastAPI + PostgreSQL, Flutter client, Prometheus/Grafana, CI with Trivy, one-command rebuild via Ansible. p95 < **X** ms at **Y** RPS; **Z**% total-amount accuracy on 30 real receipts.

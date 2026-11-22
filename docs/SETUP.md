@@ -73,7 +73,44 @@ Kết quả (văn bản OCR + đoán tổng tiền) nằm ở `spike_output/` (�
 ## Checklist tuần 0
 
 - [x] Cài mkcert, Tailscale, Trivy (Flutter để tuần 6)
+- [x] Cài thư viện PaddleOCR vào `.venv` (paddleocr 3.7.0, paddlepaddle 3.3.1)
 - [ ] Đăng nhập Tailscale
 - [ ] Chạy thử OCR 5–10 hoá đơn, điền bảng
-- [ ] Test parser chạy đạt
+- [x] Test parser chạy đạt
 - [ ] Tạo repo GitHub (để **private** cho tới tuần 7)
+
+---
+
+# Tuần 1 — Mạng và tầng dữ liệu
+
+Dựng 3 mạng (`edge`, `app`, `data`), Postgres, RabbitMQ, SeaweedFS (S3) và Nginx TLS. Chỉ cổng 443 được publish.
+
+1. Sinh `.env` (mật khẩu ngẫu nhiên, không in ra) và chứng chỉ TLS cho máy. Chạy lại không ghi đè thứ đã có:
+
+```powershell
+powershell -NoProfile -File scripts\init-env.ps1
+```
+
+2. Chạy stack:
+
+```powershell
+docker compose up -d
+```
+
+3. Kiểm tra bằng chứng (12 mục; kết quả mẫu ở `docs/evidence/week1-verify.txt`):
+
+```powershell
+powershell -NoProfile -File scripts\verify-week1.ps1
+```
+
+4. Tắt khi không dùng (dữ liệu giữ trong volume):
+
+```powershell
+docker compose down
+```
+
+> Muốn trình duyệt tin chứng chỉ `https://localhost` thì tự chạy `mkcert -install`. Lệnh này thêm CA của mkcert vào kho tin cậy của Windows, nên chỉ làm trên máy của bạn.
+
+- [x] Stack chạy, cả 4 dịch vụ healthy
+- [x] Chỉ publish 443; tầng `data` không ra được Internet; edge không chạm được Postgres
+- [ ] Tailscale: truy cập máy chủ từ thiết bị khác (sau khi đăng nhập)
