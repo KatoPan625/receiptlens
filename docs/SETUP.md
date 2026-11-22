@@ -6,7 +6,7 @@ Mục tiêu tuần 0: có công cụ, có project GCP **đã đặt budget alert
 
 ## 1. Cài công cụ (PowerShell)
 
-Đã có trên máy: Python 3.13, Docker, Git. Còn thiếu:
+Máy của Pan đã cài đủ (22/11/2026): Python 3.13, Docker, Git, gcloud 594.0.0, Terraform 1.17.2, k6 2.4.0, nmap 7.80. Máy khác thì cài bằng:
 
 ```powershell
 winget install --id Google.CloudSDK -e
