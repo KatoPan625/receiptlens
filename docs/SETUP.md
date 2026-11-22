@@ -114,3 +114,39 @@ docker compose down
 - [x] Stack chạy, cả 4 dịch vụ healthy
 - [x] Chỉ publish 443; tầng `data` không ra được Internet; edge không chạm được Postgres
 - [ ] Tailscale: truy cập máy chủ từ thiết bị khác (sau khi đăng nhập)
+
+---
+
+# Tuần 2 — API, upload, quyền tối thiểu
+
+API FastAPI chạy trong mạng `app` + `data`, nhận ảnh qua `https://localhost/api/receipts`, ghi vào SeaweedFS và Postgres. Job `migrate` chạy một lần để tạo bảng, role `api_rw` và bucket.
+
+1. Bổ sung khoá mới vào `.env` (giữ nguyên các giá trị cũ):
+
+```powershell
+powershell -NoProfile -File scripts\init-env.ps1
+```
+
+2. Build và chạy:
+
+```powershell
+docker compose up -d --build
+```
+
+3. Test đơn vị (không cần Docker, dùng SQLite + S3 giả):
+
+```powershell
+.\.venv\Scripts\python -m pip install -r api\requirements-dev.txt; Set-Location api; ..\.venv\Scripts\python -m pytest -q tests; Set-Location ..
+```
+
+4. Kiểm tra trên stack thật (14 mục; kết quả mẫu ở `docs/evidence/week2-verify.txt`):
+
+```powershell
+powershell -NoProfile -File scripts\verify-week2.ps1
+```
+
+Tài liệu API tự sinh: `https://localhost/api/docs`.
+
+- [x] Upload, đọc lại ảnh, sửa tay, thống kê tháng
+- [x] Từ chối file giả ảnh (415), file > 10 MB (413), dữ liệu sai (422)
+- [x] `api_rw` không DELETE/DROP được; key S3 của API không tạo được bucket; API không ra Internet

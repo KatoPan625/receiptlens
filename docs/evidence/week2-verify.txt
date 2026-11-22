@@ -1,0 +1,25 @@
+﻿# Week 2 verification — 2026-11-22 20:43
+
+== Health through the edge
+GET /api/healthz -> 200                                        PASS
+
+== Upload, read back, correct
+POST /api/receipts (PNG) -> 201                                PASS
+new receipt has status uploaded                                PASS
+GET /api/receipts lists it                                     PASS
+GET image returns the exact bytes uploaded (S3 round trip)     PASS
+PATCH -> 200 and status corrected                              PASS
+GET /api/stats/monthly includes 2026-11                        PASS
+
+== Input validation
+script disguised as .png -> 415                                PASS
+11 MB upload -> 413                                            PASS
+negative total -> 422                                          PASS
+
+== Least privilege
+DB role api_rw cannot DELETE                                   PASS
+DB role api_rw cannot DROP TABLE                               PASS
+S3 key of api cannot create buckets                            PASS
+api container has no Internet egress                           PASS
+
+All checks passed

@@ -46,9 +46,10 @@
                  ┌────────────▼────────────┐   mạng app (internal)
                  │ HAProxy  ──► api x1..N  │◄── autoscaler (đọc Prometheus)
                  └────────────┬────────────┘
-        (1) presigned URL     │      (5) consume receipt.parsed
+   Web / Flutter ── POST ảnh ─┘      (5) consume receipt.parsed
+                              │ (1) API kiểm tra loại/kích thước rồi ghi S3
                               ▼
-   Web / Flutter ── PUT ảnh ──► SeaweedFS (S3) receipts-raw  mạng data (internal)
+                      SeaweedFS (S3) receipts-raw  mạng data (internal)
                                    │ (2) filer notification
                                    ▼
                               RabbitMQ: receipt.uploaded ──► DLX khi lỗi
@@ -64,7 +65,7 @@
 
 **Vì sao worker không ghi thẳng vào DB?** Chỉ API chạm DB → ranh giới quyền rõ ràng; worker chỉ cần quyền đọc bucket và publish hàng đợi.
 
-> Ghi chú: SeaweedFS cần được presigned URL trỏ tới qua edge (route `/storage/` trên Nginx), vì trình duyệt không vào thẳng mạng `data`.
+**Vì sao upload đi qua API, không dùng presigned URL?** (quyết định tuần 2) Presigned URL buộc edge nối vào mạng chứa SeaweedFS; Docker không chặn theo cổng trong cùng mạng, nên edge sẽ chạm được cả cổng quản trị của SeaweedFS. Đi qua API thì tầng `data` kín hoàn toàn, và API kiểm tra file bằng magic bytes (JPEG/PNG/WebP, ≤ 10 MB) trước khi ghi. Đổi lại API phải nhận cả file; với ảnh hoá đơn ≤ 10 MB thì chấp nhận được.
 
 ---
 
@@ -80,7 +81,8 @@
 ### 4.2 Backend API (tuần 2)
 - FastAPI + SQLAlchemy + Alembic, Python 3.13, Docker.
 - Bảng `receipts`: `id`, `object_key`, `status` (`uploaded`/`parsed`/`failed`/`corrected`), `merchant`, `total_vnd`, `purchased_at`, `raw_text`, `confidence`, `created_at`, `updated_at`.
-- Endpoint: `POST /api/uploads` (presigned URL), `GET /api/receipts`, `GET /api/receipts/{id}`, `PATCH /api/receipts/{id}`, `GET /api/stats/monthly`, `GET /healthz`, `GET /metrics`.
+- Endpoint (đã làm): `POST /api/receipts` (multipart), `GET /api/receipts?month=YYYY-MM`, `GET /api/receipts/{id}`, `GET /api/receipts/{id}/image`, `PATCH /api/receipts/{id}`, `GET /api/stats/monthly`, `GET /api/healthz`. `GET /metrics` để tuần 3.
+- Quyền tối thiểu (đã làm): job `migrate` dùng tài khoản chủ DB và admin S3 để tạo bảng, role `api_rw` (chỉ SELECT/INSERT/UPDATE) và bucket; API chạy bằng `api_rw` và key S3 chỉ có quyền trên `receipts-raw`.
 
 ### 4.3 Cân bằng tải, WAF, tự co giãn (tuần 3)
 - Nginx: TLS, ModSecurity + OWASP CRS, `limit_req` theo IP, proxy tới HAProxy.
@@ -100,7 +102,7 @@
 - GitHub Actions (miễn phí cho repo public): `ruff`, `pytest`, build image, **Trivy** quét, đẩy image lên **GHCR**.
 
 ### 4.6 App Flutter (tuần 6)
-- Chụp ảnh / chọn ảnh → xin presigned URL → upload → xem danh sách và trạng thái.
+- Chụp ảnh / chọn ảnh → `POST /api/receipts` → xem danh sách và trạng thái.
 - Kết nối server qua Tailscale (điện thoại cài Tailscale) hoặc LAN.
 
 ### 4.7 Dựng lại một lệnh + hoàn thiện (tuần 7)
@@ -136,8 +138,8 @@ receiptlens/
 | Tuần | Việc | Bàn giao |
 |---|---|---|
 | **0** | Thử PaddleOCR trên 5–10 hoá đơn thật | Biết độ chính xác thực tế trước khi xây |
-| **1** | `compose.yaml`: 3 mạng, Postgres, SeaweedFS, RabbitMQ, Nginx (TLS); Tailscale | `nmap` chỉ thấy 443; container `data` không ra được Internet |
-| **2** | API + DB + presigned upload | Upload ảnh vào SeaweedFS qua API |
+| **1** ✅ | `compose.yaml`: 3 mạng, Postgres, SeaweedFS, RabbitMQ, Nginx (TLS); Tailscale | `nmap` chỉ thấy 443; container `data` không ra được Internet |
+| **2** ✅ | API + DB + upload qua API, quyền tối thiểu | Upload ảnh vào SeaweedFS qua API; 14/14 kiểm tra |
 | **3** | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
 | **4** | SeaweedFS → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu; đạt G2 |
 | **5** | Dashboard web, Grafana/Loki, CI + Trivy + GHCR | CI xanh; dashboard giám sát |
@@ -179,7 +181,7 @@ Chi phí duy nhất là **tài nguyên máy**: nên có RAM ≥ 8 GB; PaddleOCR 
 |---|---|
 | OCR hoá đơn in nhiệt mờ, sai tổng tiền | Thử ở tuần 0; cho sửa tay; báo cáo độ chính xác thật |
 | Máy yếu, chạy nhiều container chậm | Giới hạn `mem_limit`; tắt Loki/Grafana khi không cần |
-| Presigned URL của SeaweedFS không vào được từ ngoài | Đặt route `/storage/` qua Nginx, ký URL theo host công khai |
+| API phải nhận cả file ảnh (không dùng presigned URL) | Giới hạn 10 MB ở cả Nginx và API; tuần 3 có nhiều bản sao API sau HAProxy |
 | Quick Tunnel đổi URL, không đảm bảo uptime | Chỉ dùng khi demo trực tiếp; README dùng video + ảnh |
 | Ảnh hoá đơn chứa thông tin cá nhân | `samples/` git-ignore; bucket không public; fixture phải che thông tin |
 | Quá tải thời gian | Cắt k3s, Loki, Flutter xuống bản 2; giữ lõi tuần 1–5 |

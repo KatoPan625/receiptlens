@@ -1,7 +1,7 @@
 # ReceiptLens: week 1 foundation.
 # Three networks mirror a cloud VPC layout:
 #   edge  - the only network with a published port (443)
-#   app   - internal: API tier (week 2+), no route to the Internet
+#   app   - internal: API tier, no route to the Internet
 #   data  - internal: Postgres, RabbitMQ, SeaweedFS (S3), no route to the Internet
 # Secrets come from .env (generate with scripts/init-env.ps1, never committed).
 
@@ -69,6 +69,36 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+
+  migrate:
+    # One-shot: schema migration, least-privilege DB role, bucket. Holds the owner/admin
+    # credentials so the long-running api never does.
+    build: ./api
+    command: ["sh", "-c", "alembic upgrade head && python -m app.bootstrap"]
+    environment:
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?run scripts/init-env.ps1}
+      S3_KEY: ${S3_ADMIN_KEY}
+      S3_SECRET: ${S3_ADMIN_SECRET}
+    networks: [data]
+    depends_on:
+      postgres: { condition: service_healthy }
+      storage: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: ./api
+    environment:
+      DB_USER: api_rw          # SELECT/INSERT/UPDATE on receipts only
+      DB_PASSWORD: ${API_DB_PASSWORD}
+      S3_KEY: ${S3_API_KEY}    # read/write/list on receipts-raw only
+      S3_SECRET: ${S3_API_SECRET}
+    networks: [app, data]      # reachable from edge via app; both networks are internal
+    mem_limit: 256m
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
 
   storage:
     # SeaweedFS with an S3 API; replaces MinIO (no longer published on Docker Hub).

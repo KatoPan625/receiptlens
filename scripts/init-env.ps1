@@ -12,23 +12,30 @@ function New-Secret([int]$bytes = 24) {
 }
 
 $envFile = Join-Path $root '.env'
+$wanted = [ordered]@{
+    POSTGRES_USER     = 'receiptlens'
+    POSTGRES_PASSWORD = New-Secret
+    API_DB_PASSWORD   = New-Secret
+    RABBITMQ_USER     = 'receiptlens'
+    RABBITMQ_PASSWORD = New-Secret
+    S3_ADMIN_KEY      = "admin$(New-Secret 9)"
+    S3_ADMIN_SECRET   = New-Secret
+    S3_API_KEY        = "api$(New-Secret 9)"
+    S3_API_SECRET     = New-Secret
+    S3_OCR_KEY        = "ocr$(New-Secret 9)"
+    S3_OCR_SECRET     = New-Secret
+}
+# Keep every existing value; only append keys that are missing (e.g. added in a later week).
+$have = @{}
 if (Test-Path $envFile) {
-    Write-Host '.env already exists, keeping it.'
+    Get-Content $envFile | Where-Object { $_ -match '^([A-Z0-9_]+)=' } | ForEach-Object { $have[$Matches[1]] = $true }
+}
+$missing = @($wanted.Keys | Where-Object { -not $have.ContainsKey($_) } | ForEach-Object { "$_=$($wanted[$_])" })
+if ($missing.Count) {
+    Add-Content -Path $envFile -Value $missing -Encoding ascii
+    Write-Host "Added $($missing.Count) new secret(s) to .env (values not printed)."
 } else {
-    $lines = @(
-        'POSTGRES_USER=receiptlens'
-        "POSTGRES_PASSWORD=$(New-Secret)"
-        'RABBITMQ_USER=receiptlens'
-        "RABBITMQ_PASSWORD=$(New-Secret)"
-        "S3_ADMIN_KEY=admin$(New-Secret 9)"
-        "S3_ADMIN_SECRET=$(New-Secret)"
-        "S3_API_KEY=api$(New-Secret 9)"
-        "S3_API_SECRET=$(New-Secret)"
-        "S3_OCR_KEY=ocr$(New-Secret 9)"
-        "S3_OCR_SECRET=$(New-Secret)"
-    )
-    Set-Content -Path $envFile -Value $lines -Encoding ascii
-    Write-Host 'Created .env with random secrets (not printed).'
+    Write-Host '.env already complete, keeping it.'
 }
 
 $certDir = Join-Path $root 'edge\certs'
