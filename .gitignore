@@ -8,16 +8,6 @@
 *credentials*.json
 service-account*.json
 
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfvars
-!*.tfvars.example
-infra/backend.hcl
-crash.log
-.terraform.lock.hcl.bak
-
 # Python
 __pycache__/
 *.pyc
