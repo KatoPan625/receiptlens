@@ -9,9 +9,12 @@ Fully self-hosted with open source, rebuilding Google Cloud patterns (secure net
 
 ```powershell
 powershell -NoProfile -File scripts\init-env.ps1
-docker compose up -d
+docker compose up -d --build
 powershell -NoProfile -File scripts\verify-week1.ps1
+powershell -NoProfile -File scripts\verify-week2.ps1
 ```
+
+API docs: `https://localhost/api/docs`
 
 ## Layout
 
@@ -27,4 +30,4 @@ powershell -NoProfile -File scripts\verify-week1.ps1
 | `samples/` | Your real receipt photos. **Git-ignored**: they contain personal data |
 | `web/` | Placeholder for week 5 |
 
-Other folders (`edge/`, `lb/`, `autoscaler/`, `mobile/`, `observability/`, `deploy/`) arrive in later weeks, see [PLAN.md](PLAN.md#5-cấu-trúc-repo).
+Other folders (`lb/`, `autoscaler/`, `mobile/`, `observability/`, `deploy/`) arrive in later weeks, see [PLAN.md](PLAN.md#5-cấu-trúc-repo).
