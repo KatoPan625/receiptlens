@@ -12,9 +12,9 @@ Mục tiêu tuần 0: đủ công cụ, và **biết PaddleOCR đọc hoá đơn
 | Docker Desktop | tuần 1+ | ✅ có |
 | WSL Ubuntu | Ansible (tuần 7) | ✅ có |
 | k6, nmap | tuần 1, 3 | ✅ đã cài |
-| mkcert | tuần 1 (TLS local) | cần cài |
-| Tailscale | tuần 1 (truy cập quản trị), tuần 6 (điện thoại) | cần cài |
-| Trivy | tuần 5 | cần cài |
+| mkcert | tuần 1 (TLS local) | ✅ đã cài (1.4.4) |
+| Tailscale | tuần 1 (truy cập quản trị), tuần 6 (điện thoại) | ✅ đã cài (1.104.7), cần đăng nhập |
+| Trivy | tuần 5 | ✅ đã cài (0.76.2) |
 | Flutter SDK | tuần 6 | cần cài, theo hướng dẫn chính thức tại flutter.dev |
 
 Cài các công cụ còn thiếu (PowerShell):
@@ -72,7 +72,8 @@ Kết quả (văn bản OCR + đoán tổng tiền) nằm ở `spike_output/` (�
 
 ## Checklist tuần 0
 
-- [ ] Cài mkcert, Tailscale, Trivy (Flutter để tuần 6)
+- [x] Cài mkcert, Tailscale, Trivy (Flutter để tuần 6)
+- [ ] Đăng nhập Tailscale
 - [ ] Chạy thử OCR 5–10 hoá đơn, điền bảng
 - [ ] Test parser chạy đạt
 - [ ] Tạo repo GitHub (để **private** cho tới tuần 7)
