@@ -110,10 +110,15 @@ services:
       API_DB_PASSWORD: ${API_DB_PASSWORD:?run scripts/init-env.ps1}
       S3_KEY: ${S3_ADMIN_KEY}
       S3_SECRET: ${S3_ADMIN_SECRET}
+      RABBITMQ_ADMIN_USER: ${RABBITMQ_USER}
+      RABBITMQ_ADMIN_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_API_PASSWORD: ${RABBITMQ_API_PASSWORD:?run scripts/init-env.ps1}
+      RABBITMQ_OCR_PASSWORD: ${RABBITMQ_OCR_PASSWORD:?run scripts/init-env.ps1}
     networks: [data]
     depends_on:
       postgres: { condition: service_healthy }
       storage: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
     restart: "no"
 
   api:
@@ -124,8 +129,22 @@ services:
       DB_PASSWORD: ${API_DB_PASSWORD}
       S3_KEY: ${S3_API_KEY}    # read/write/list on receipts-raw only
       S3_SECRET: ${S3_API_SECRET}
+      RABBIT_PASSWORD: ${RABBITMQ_API_PASSWORD}   # user `api`: publish to receipts, read api.results
     networks: [app, data]      # reachable from edge via app; both networks are internal
     mem_limit: 256m
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  ocr-worker:
+    # PaddleOCR with models baked in at build time; the data network has no Internet.
+    build: ./ocr_worker
+    environment:
+      S3_KEY: ${S3_OCR_KEY}            # read-only on receipts-raw
+      S3_SECRET: ${S3_OCR_SECRET}
+      RABBIT_PASSWORD: ${RABBITMQ_OCR_PASSWORD}   # user `ocr`: read ocr.requests, publish to receipts
+    networks: [data]
+    mem_limit: 2g
     restart: unless-stopped
     depends_on:
       migrate: { condition: service_completed_successfully }

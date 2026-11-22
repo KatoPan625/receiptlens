@@ -1,24 +1,40 @@
+import logging
 import socket
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Annotated
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
+from pika.exceptions import AMQPError
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from . import events
 from .config import get_settings
 from .db import get_session
 from .models import Receipt
 from .storage import Storage, get_storage
 
+log = logging.getLogger("receiptlens.api")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop = events.start_background() if get_settings().events_enabled else None
+    yield
+    if stop:
+        stop.set()
+
+
 # Served under /api by the edge; the prefix is set with uvicorn --root-path (see Dockerfile).
-app = FastAPI(title="ReceiptLens API")
+app = FastAPI(title="ReceiptLens API", lifespan=lifespan)
 
 REPLICA = socket.gethostname()  # container ID; shows which replica HAProxy picked
 REQUESTS = Counter("http_requests_total", "HTTP requests", ["method", "route", "status"])
@@ -115,7 +131,7 @@ async def upload_receipt(file: UploadFile, session: SessionDep, storage: Storage
         storage.put(key, data, ctype)
     except (BotoCoreError, ClientError) as e:
         raise HTTPException(502, "Object storage unavailable") from e
-    receipt = Receipt(id=rid, object_key=key, content_type=ctype, status="uploaded")
+    receipt = Receipt(id=rid, object_key=key, content_type=ctype, status="uploaded", ocr_attempts=1)
     session.add(receipt)
     try:
         session.commit()
@@ -127,6 +143,12 @@ async def upload_receipt(file: UploadFile, session: SessionDep, storage: Storage
             pass
         raise
     session.refresh(receipt)
+    if get_settings().events_enabled:
+        try:
+            await run_in_threadpool(events.request_ocr, receipt)
+        except AMQPError:
+            # The receipt is saved; the sweep re-publishes it within a few minutes.
+            log.warning("could not queue OCR for %s now; the sweep will retry", rid)
     return receipt
 
 

@@ -46,19 +46,17 @@
                  ┌────────────▼────────────┐   mạng app (internal)
                  │ HAProxy  ──► api x1..N  │◄── autoscaler (đọc Prometheus)
                  └────────────┬────────────┘
-   Web / Flutter ── POST ảnh ─┘      (5) consume receipt.parsed
-                              │ (1) API kiểm tra loại/kích thước rồi ghi S3
+   Web / Flutter ── POST ảnh ─┘
+                              │ (1) API kiểm tra loại/kích thước, ghi S3 + Postgres     mạng data (internal)
+                              │ (2) API publish receipt.uploaded (+ quét bù mỗi 60 s)
                               ▼
-                      SeaweedFS (S3) receipts-raw  mạng data (internal)
-                                   │ (2) filer notification
-                                   ▼
-                              RabbitMQ: receipt.uploaded ──► DLX khi lỗi
-                                   │ (3)
-                                   ▼
-                              ocr-worker (PaddleOCR + parser)
-                                   │ (4)
-                                   ▼
-                              RabbitMQ: receipt.parsed ──► api ──► PostgreSQL
+                      RabbitMQ: ocr.requests ──► ocr.requests.dead (sau 5 lần lỗi)
+                              │ (3)
+                              ▼
+                      ocr-worker: đọc ảnh từ SeaweedFS (chỉ đọc) → PaddleOCR → parser
+                              │ (4) publish receipt.parsed
+                              ▼
+                      RabbitMQ: api.results ──► api ghi kết quả vào PostgreSQL (5)
 
    Quản trị: Tailscale → máy chủ.   Giám sát: Prometheus · Grafana · Loki · cAdvisor
 ```
@@ -91,11 +89,14 @@
 - (đã làm) Autoscaler `autoscaler/autoscale.py` chạy **trên máy host**: đọc req/s của HAProxy từ Prometheus qua `docker compose exec`, rồi `docker compose up --scale api=N` (1–4). Tăng ngay; giảm từng bước sau cooldown và chỉ khi còn dư 20% năng lực. Chạy trên host để không phải gắn `docker.sock` (tương đương quyền root) vào container nào.
 - Bằng chứng: `docs/evidence/week3-load.md`: 9.074 yêu cầu, 0 lỗi, p95 10,72 ms, số bản sao 1 → 4 → 2. Lần đo đầu trượt (p95 322 ms, 0,46% lỗi) vì autoscaler giảm sai lúc tải đang tăng; đã sửa bằng hysteresis.
 
-### 4.4 Pipeline sự kiện + OCR (tuần 4)
-- SeaweedFS: bucket `receipts-raw`, không public, xoá ảnh sau 30 ngày. Sự kiện file mới: filer notification `gocdk_pub_sub` → exchange RabbitMQ (tin dạng protobuf) hoặc webhook JSON → API publish; chốt cách ở tuần này.
-- `ocr-worker`: PaddleOCR (`lang="vi"`, tắt các bước xoay/làm phẳng ảnh nếu không cần) → `receipt_parser` → publish `receipt.parsed`.
-- Queue có dead-letter exchange sau 5 lần lỗi; API consumer ack sau khi ghi DB, idempotent theo `object_key`.
-- Bằng chứng: báo cáo độ chính xác 30 hoá đơn (tổng tiền, ngày, cửa hàng).
+### 4.4 Pipeline sự kiện + OCR (tuần 4) — đã làm
+- **Nguồn sự kiện (quyết định tuần 4):** API publish `receipt.uploaded` ngay sau khi ghi DB thành công, có publisher confirms. Không dùng sự kiện từ SeaweedFS vì: gửi thẳng RabbitMQ thì tin nhắn là protobuf (phải biên dịch `.proto` của SeaweedFS), còn webhook chỉ thử lại 3 lần rồi bỏ. Để không mất việc khi publish lỗi, mỗi bản sao API chạy **vòng quét bù** 60 giây/lần: hoá đơn kẹt ở `uploaded` quá 2 phút được publish lại (tối đa 3 lần, khoá hàng bằng `SKIP LOCKED` để nhiều bản sao không gửi trùng), quá 10 phút thì đánh dấu `failed`.
+- **RabbitMQ:** exchange `receipts` + `receipts.dlx`; quorum queue `ocr.requests` và `api.results`, `x-delivery-limit: 5` rồi vào `*.dead`. Job `migrate` tạo toàn bộ topology và 2 user: `api` (chỉ publish `receipts`, đọc `api.results`), `ocr` (chỉ publish `receipts`, đọc `ocr.requests`); không user nào có quyền configure.
+- **`ocr-worker`:** PaddleOCR 3.7 / PaddlePaddle 3.3.1, mô hình PP-OCRv6 (mặc định của `lang="vi"`) được **tải sẵn lúc build image** vì mạng `data` không ra Internet. Phải tắt oneDNN (`enable_mkldnn=False`): bật thì Paddle báo `ConvertPirAttribute2RuntimeAttribute not support`. Key S3 chỉ đọc. Ảnh không giải mã được hoặc OCR lỗi → trả kết quả `failed` (không làm chết worker); S3 lỗi → requeue, quá 5 lần vào DLQ.
+- **Giới hạn đã thấy của PaddleOCR với tiếng Việt:** PP-OCRv6 rơi các nguyên âm mang hai dấu (Nguyễn → "Nguyn", Tiền → "Tin"); PP-OCRv5 Latin còn kém hơn (đọc "TỔNG CỘNG" thành "TNG CQNG"). Parser vì thế so từ khoá theo **bộ xương phụ âm** (bỏ dấu rồi bỏ nguyên âm). Nếu hoá đơn thật vẫn kém, phương án là VietOCR (mô hình chuyên tiếng Việt, nặng hơn).
+- **API nhận kết quả:** chỉ ghi vào hoá đơn đang `uploaded` → kết quả trùng là vô hại và **sửa tay của người dùng luôn thắng**. Tổng tiền ngoài khoảng hợp lệ bị bỏ.
+- Bằng chứng: `docs/evidence/week4-verify.txt` (14/14): hoá đơn mẫu đi hết đường ống trong 4,5 s, đúng tổng/ngày/cửa hàng; ảnh hỏng thành `failed`; tin độc vào DLQ; user RabbitMQ bị `ACCESS_REFUSED` ngoài quyền; worker không ra Internet.
+- **Chưa làm:** đo độ chính xác trên 30 hoá đơn thật (G2) — chờ ảnh thật trong `samples/`.
 
 ### 4.5 Web, giám sát, CI (tuần 5)
 - Dashboard tĩnh (HTML/JS, cùng phong cách portfolio) do Nginx phục vụ: upload, danh sách, sửa tay, biểu đồ tháng.
@@ -142,7 +143,7 @@ receiptlens/
 | **1** ✅ | `compose.yaml`: 3 mạng, Postgres, SeaweedFS, RabbitMQ, Nginx (TLS); Tailscale | `nmap` chỉ thấy 443; container `data` không ra được Internet |
 | **2** ✅ | API + DB + upload qua API, quyền tối thiểu | Upload ảnh vào SeaweedFS qua API; 14/14 kiểm tra |
 | **3** ✅ | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
-| **4** | SeaweedFS → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu; đạt G2 |
+| **4** ✅ | API → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu (đạt: 4,5 s); G2 chờ hoá đơn thật |
 | **5** | Dashboard web, Grafana/Loki, CI + Trivy + GHCR | CI xanh; dashboard giám sát |
 | **6** | App Flutter | Chụp và upload từ điện thoại |
 | **7** | Ansible, (tuỳ chọn) k3s, README, video, CV, portfolio | Repo public hoàn chỉnh |

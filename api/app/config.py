@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     s3_secret: str = ""
     s3_bucket: str = "receipts-raw"
     max_upload_mb: int = 10
+    rabbit_host: str = "rabbitmq"
+    rabbit_user: str = "api"
+    rabbit_password: str = ""
+    # Off in unit tests; on in the container (consumes OCR results, re-publishes lost requests).
+    events_enabled: bool = False
     # Only the one-shot bootstrap job sets this: the password it gives the api_rw role.
     api_db_password: str = ""
 

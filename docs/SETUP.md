@@ -195,3 +195,34 @@ Kết quả đã đo: `docs/evidence/week3-load.md` (9.074 yêu cầu, 0 lỗi, 
 - [x] Upload dồn dập bị 429, đọc không bị ảnh hưởng
 - [x] HAProxy chia đều cho các bản sao; giết một bản sao vẫn 30/30 yêu cầu thành công
 - [x] Autoscaler tăng/giảm theo tải, không dao động
+
+---
+
+# Tuần 4 — Pipeline OCR
+
+Ảnh lên → API publish `receipt.uploaded` → RabbitMQ → `ocr-worker` (PaddleOCR, chạy trong mạng `data`, không ra Internet) → `receipt.parsed` → API ghi kết quả.
+
+1. Bổ sung mật khẩu RabbitMQ mới vào `.env` (giữ giá trị cũ):
+
+```powershell
+powershell -NoProfile -File scripts\init-env.ps1
+```
+
+2. Build và chạy. Image `ocr-worker` khoảng 640 MB và tải sẵn mô hình lúc build, lần đầu mất vài phút:
+
+```powershell
+docker compose up -d --build
+```
+
+3. Kiểm tra (14 mục, dùng hoá đơn **tự tạo**; kết quả mẫu ở `docs/evidence/week4-verify.txt`):
+
+```powershell
+powershell -NoProfile -File scripts\verify-week4.ps1
+```
+
+4. Thử với ảnh của bạn: mở `https://localhost/api/docs`, gọi `POST /receipts`, vài giây sau `GET /receipts/{id}` sẽ có `status`, `total_vnd`, `merchant`, `raw_text`.
+
+- [x] Hoá đơn mẫu đi hết đường ống trong 4,5 s, đọc đúng tổng tiền, ngày, cửa hàng
+- [x] Ảnh hỏng → `failed`; tin nhắn hỏng → DLQ `ocr.requests.dead`
+- [x] User RabbitMQ `api`/`ocr` chỉ dùng được queue của mình; key S3 của worker chỉ đọc
+- [ ] Độ chính xác trên 30 hoá đơn thật (G2): chụp ảnh vào `samples/`, chạy `spike_ocr.py`, điền bảng ở mục 2 tuần 0

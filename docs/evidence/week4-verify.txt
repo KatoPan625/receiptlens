@@ -1,0 +1,27 @@
+﻿# Week 4 verification — 2026-11-22 21:24
+
+== Happy path: synthetic receipt, total 125.000 VND
+upload -> status uploaded                                          PASS
+OCR result stored, status parsed (took 4.5 s)                      PASS
+end-to-end <= 15 s (G1)                                            PASS
+total_vnd = 125000 (got 125000)                                    PASS
+purchased_at = 2026-11-20 09:30 +07:00 (got 2026-11-20T02:30:00Z)  PASS
+merchant read (got 'CÀ PHÊ SÁNG')                                  PASS
+raw OCR text kept for review                                       PASS
+
+== Failure path: valid PNG signature, undecodable body
+broken image ends as failed, not stuck (took 0.6 s)                PASS
+
+== Poison message goes to the dead-letter queue
+malformed request dead-lettered (1 -> 2)                           PASS
+
+== Least privilege
+RabbitMQ user ocr cannot read api.results                          PASS
+RabbitMQ user api cannot create queues                             PASS
+S3 key of the OCR worker is read-only                              PASS
+OCR worker has no Internet egress                                  PASS
+
+== Queues drained
+work queues empty (ocr.requests=0, api.results=0)                  PASS
+
+All checks passed
