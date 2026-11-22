@@ -1,11 +1,13 @@
-import re
+import socket
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import Depends, FastAPI, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -17,6 +19,30 @@ from .storage import Storage, get_storage
 
 # Served under /api by the edge; the prefix is set with uvicorn --root-path (see Dockerfile).
 app = FastAPI(title="ReceiptLens API")
+
+REPLICA = socket.gethostname()  # container ID; shows which replica HAProxy picked
+REQUESTS = Counter("http_requests_total", "HTTP requests", ["method", "route", "status"])
+LATENCY = Histogram("http_request_duration_seconds", "Request latency", ["route"],
+                    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5))
+
+
+@app.middleware("http")
+async def observe(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    # Route template (e.g. /receipts/{receipt_id}) keeps label cardinality low.
+    route = getattr(request.scope.get("route"), "path", "unmatched")
+    if route != "/metrics":
+        REQUESTS.labels(request.method, route, str(response.status_code)).inc()
+        LATENCY.labels(route).observe(time.perf_counter() - start)
+    response.headers["X-Served-By"] = REPLICA
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    # Not reachable from outside: the edge returns 404 for /api/metrics; Prometheus scrapes replicas directly.
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 SessionDep = Annotated[Session, Depends(get_session)]
 StorageDep = Annotated[Storage, Depends(get_storage)]

@@ -1,4 +1,4 @@
-﻿# Week 1 verification — 2026-11-22 20:43
+﻿# Week 1 verification — 2026-11-22 21:04
 
 == Services healthy
 edge is healthy (got: healthy)                             PASS
@@ -19,6 +19,7 @@ storage cannot reach https://example.com                   PASS
 edge CAN reach the Internet (control)                      PASS
 
 == Edge cannot reach the data tier directly
-edge -> postgres:5432 blocked                              PASS
+edge -> postgres:5432 blocked (curl exit 28)               PASS
+edge -> storage admin port 9333 blocked (curl exit 28)     PASS
 
 All checks passed

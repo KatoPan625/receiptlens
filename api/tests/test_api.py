@@ -106,5 +106,13 @@ def test_unknown_receipt_is_404(client):
     assert client.get("/receipts/00000000-0000-0000-0000-000000000000").status_code == 404
 
 
+def test_metrics_and_replica_header(client):
+    r = client.get("/receipts")
+    assert r.headers["X-Served-By"]
+    body = client.get("/metrics").text
+    assert 'http_requests_total{method="GET",route="/receipts",status="200"}' in body
+    assert "http_request_duration_seconds_bucket" in body
+
+
 def test_month_filter_validated(client):
     assert client.get("/receipts", params={"month": "2026-13"}).status_code == 422

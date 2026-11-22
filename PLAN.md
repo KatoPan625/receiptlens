@@ -85,10 +85,11 @@
 - Quyền tối thiểu (đã làm): job `migrate` dùng tài khoản chủ DB và admin S3 để tạo bảng, role `api_rw` (chỉ SELECT/INSERT/UPDATE) và bucket; API chạy bằng `api_rw` và key S3 chỉ có quyền trên `receipts-raw`.
 
 ### 4.3 Cân bằng tải, WAF, tự co giãn (tuần 3)
-- Nginx: TLS, ModSecurity + OWASP CRS, `limit_req` theo IP, proxy tới HAProxy.
-- HAProxy: round-robin tới các bản sao `api`, health check `/healthz`, trang stats chỉ mở trong mạng nội bộ.
-- Autoscaler (Python nhỏ): mỗi 15 giây đọc RPS/CPU từ Prometheus → tăng/giảm `api` trong khoảng 1–4, có thời gian chờ chống dao động.
-- Bằng chứng: k6 tăng tải dần, biểu đồ số bản sao + p95.
+- (đã làm) Edge dùng image `owasp/modsecurity-crs` (Nginx + ModSecurity v3 + OWASP CRS, paranoia 1, chế độ chặn), chạy user không phải root ở cổng 8443 (map 443 → 8443). Chỉ cho phép `GET HEAD POST OPTIONS PATCH`. Rate limit: đọc 100 yêu cầu/s (burst 200), upload 2/s (burst 10). `/api/metrics` bị chặn từ ngoài.
+- (đã làm) HAProxy: round-robin, `server-template` 4 slot lấy IP các bản sao từ DNS của Docker, health check `/healthz`, `retries` + `redispatch` khi một bản sao chết; số liệu Prometheus và trang stats chỉ trong mạng `app`.
+- (đã làm) Prometheus trong mạng `app` (không publish cổng), lấy số liệu từng bản sao API qua DNS SD và từ HAProxy.
+- (đã làm) Autoscaler `autoscaler/autoscale.py` chạy **trên máy host**: đọc req/s của HAProxy từ Prometheus qua `docker compose exec`, rồi `docker compose up --scale api=N` (1–4). Tăng ngay; giảm từng bước sau cooldown và chỉ khi còn dư 20% năng lực. Chạy trên host để không phải gắn `docker.sock` (tương đương quyền root) vào container nào.
+- Bằng chứng: `docs/evidence/week3-load.md`: 9.074 yêu cầu, 0 lỗi, p95 10,72 ms, số bản sao 1 → 4 → 2. Lần đo đầu trượt (p95 322 ms, 0,46% lỗi) vì autoscaler giảm sai lúc tải đang tăng; đã sửa bằng hysteresis.
 
 ### 4.4 Pipeline sự kiện + OCR (tuần 4)
 - SeaweedFS: bucket `receipts-raw`, không public, xoá ảnh sau 30 ngày. Sự kiện file mới: filer notification `gocdk_pub_sub` → exchange RabbitMQ (tin dạng protobuf) hoặc webhook JSON → API publish; chốt cách ở tuần này.
@@ -140,7 +141,7 @@ receiptlens/
 | **0** | Thử PaddleOCR trên 5–10 hoá đơn thật | Biết độ chính xác thực tế trước khi xây |
 | **1** ✅ | `compose.yaml`: 3 mạng, Postgres, SeaweedFS, RabbitMQ, Nginx (TLS); Tailscale | `nmap` chỉ thấy 443; container `data` không ra được Internet |
 | **2** ✅ | API + DB + upload qua API, quyền tối thiểu | Upload ảnh vào SeaweedFS qua API; 14/14 kiểm tra |
-| **3** | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
+| **3** ✅ | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
 | **4** | SeaweedFS → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu; đạt G2 |
 | **5** | Dashboard web, Grafana/Loki, CI + Trivy + GHCR | CI xanh; dashboard giám sát |
 | **6** | App Flutter | Chụp và upload từ điện thoại |

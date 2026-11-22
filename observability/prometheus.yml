@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Every API replica: Docker DNS returns one A record per replica.
+  - job_name: api
+    dns_sd_configs:
+      - names: [api]
+        type: A
+        port: 8000
+        refresh_interval: 5s
+
+  - job_name: haproxy
+    static_configs:
+      - targets: ["lb:8404"]

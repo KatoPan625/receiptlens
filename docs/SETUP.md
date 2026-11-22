@@ -150,3 +150,48 @@ Tài liệu API tự sinh: `https://localhost/api/docs`.
 - [x] Upload, đọc lại ảnh, sửa tay, thống kê tháng
 - [x] Từ chối file giả ảnh (415), file > 10 MB (413), dữ liệu sai (422)
 - [x] `api_rw` không DELETE/DROP được; key S3 của API không tạo được bucket; API không ra Internet
+
+---
+
+# Tuần 3 — WAF, cân bằng tải, tự co giãn
+
+Đường đi của mỗi yêu cầu: **edge** (TLS + ModSecurity/OWASP CRS + rate limit) → **lb** (HAProxy) → **api** (1–4 bản sao). Prometheus lấy số liệu trong mạng nội bộ, không publish cổng.
+
+1. Chạy (lần đầu sẽ tải image WAF, HAProxy, Prometheus):
+
+```powershell
+docker compose up -d --build
+```
+
+2. Kiểm tra WAF, rate limit, chia tải, chịu lỗi khi một bản sao chết (12 mục, kết quả mẫu ở `docs/evidence/week3-verify.txt`):
+
+```powershell
+powershell -NoProfile -File scripts\verify-week3.ps1
+```
+
+3. Đo tải + tự co giãn. Mở **hai** terminal ở thư mục dự án.
+
+Terminal 1, autoscaler (Ctrl+C để dừng):
+
+```powershell
+.\.venv\Scripts\python autoscaler\autoscale.py --interval 5 --cooldown 30 --log docs\evidence\week3-autoscale.csv
+```
+
+Terminal 2, k6 (khoảng 4 phút):
+
+```powershell
+k6 run --summary-export docs\evidence\week3-k6-summary.json tests\load\k6.js
+```
+
+Kết quả đã đo: `docs/evidence/week3-load.md` (9.074 yêu cầu, 0 lỗi, p95 10,72 ms, bản sao 1 → 4 → 2).
+
+4. Test đơn vị autoscaler + parser:
+
+```powershell
+.\.venv\Scripts\python -m pytest -q tests
+```
+
+- [x] SQLi, XSS, path traversal, method DELETE bị WAF chặn (403); upload PNG thật vẫn qua
+- [x] Upload dồn dập bị 429, đọc không bị ảnh hưởng
+- [x] HAProxy chia đều cho các bản sao; giết một bản sao vẫn 30/30 yêu cầu thành công
+- [x] Autoscaler tăng/giảm theo tải, không dao động

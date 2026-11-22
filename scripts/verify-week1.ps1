@@ -37,12 +37,17 @@ foreach ($s in 'postgres', 'storage') {
     docker compose exec -T $s sh -c 'wget -q -T 5 -O /dev/null https://example.com' 2>$null
     Check "$s cannot reach https://example.com" ($LASTEXITCODE -ne 0)
 }
-docker compose exec -T edge sh -c 'wget -q -T 5 -O /dev/null https://example.com' 2>$null
+# The edge image (ModSecurity CRS) ships curl but not wget/nc.
+docker compose exec -T edge curl -s -m 5 -o /dev/null https://example.com 2>$null
 Check "edge CAN reach the Internet (control)" ($LASTEXITCODE -eq 0)
 
 "`n== Edge cannot reach the data tier directly"
-docker compose exec -T edge sh -c 'nc -z -w 3 postgres 5432' 2>$null
-Check "edge -> postgres:5432 blocked" ($LASTEXITCODE -ne 0)
+# Only curl's network errors count as "blocked": 6 = name not resolvable (not on the network),
+# 7 = connection refused, 28 = timeout. Any other code (e.g. 127 = tool missing) is a FAIL.
+docker compose exec -T edge curl -s --connect-timeout 3 -o /dev/null http://postgres:5432 2>$null
+Check "edge -> postgres:5432 blocked (curl exit $LASTEXITCODE)" (@(6, 7, 28) -contains $LASTEXITCODE)
+docker compose exec -T edge curl -s --connect-timeout 3 -o /dev/null http://storage:9333 2>$null
+Check "edge -> storage admin port 9333 blocked (curl exit $LASTEXITCODE)" (@(6, 7, 28) -contains $LASTEXITCODE)
 
 "`n$(if ($fail) { "$fail check(s) FAILED" } else { 'All checks passed' })"
 exit $fail

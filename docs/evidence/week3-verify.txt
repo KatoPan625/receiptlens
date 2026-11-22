@@ -1,0 +1,25 @@
+﻿# Week 3 verification — 2026-11-22 21:04
+
+== WAF (ModSecurity + OWASP CRS)
+normal request -> 200                                            PASS
+SQL injection in query -> 403                                    PASS
+XSS in query -> 403                                              PASS
+path traversal -> 403                                            PASS
+real PNG upload still passes the WAF -> 201                      PASS
+/api/metrics is not exposed -> 404                               PASS
+DELETE is not an allowed method -> 403                           PASS
+
+== Rate limit on uploads (2/s, burst 10)
+25 rapid uploads -> some 429 (got 13)                            PASS
+reads are not throttled by the upload limit                      PASS
+
+== Load balancing (HAProxy, 2 replicas)
+12 requests spread over 2 replicas (25213f1987a9x6, c647999037adx6) PASS
+
+== Failover: one replica dies, requests keep succeeding
+30 requests over 6 s after killing a replica -> all 200 (got 30) PASS
+
+== Metrics
+Prometheus scrapes api replicas + haproxy (2 targets up)         PASS
+
+All checks passed
