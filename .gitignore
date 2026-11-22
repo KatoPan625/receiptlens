@@ -1,0 +1,37 @@
+# Secrets and credentials: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-key.json
+*credentials*.json
+service-account*.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+infra/backend.hcl
+crash.log
+.terraform.lock.hcl.bak
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Real receipts and OCR output (personal data)
+samples/*
+!samples/README.md
+spike_output/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
