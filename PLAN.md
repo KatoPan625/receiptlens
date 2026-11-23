@@ -106,9 +106,13 @@
 - **Trivy lần đầu** thấy 6 HIGH mỗi image: `zlib1g` (Debian) và urllib3/msgpack/setuptools nằm trong **pip tự đóng gói**. Sửa: `apt-get upgrade` lúc build và **gỡ pip khỏi image chạy** → 0.
 - **Cắt xuống bản 2:** Loki, cAdvisor (đúng thứ tự cắt ở mục 9).
 
-### 4.6 App Flutter (tuần 6)
-- Chụp ảnh / chọn ảnh → `POST /api/receipts` → xem danh sách và trạng thái.
-- Kết nối server qua Tailscale (điện thoại cài Tailscale) hoặc LAN.
+### 4.6 App Flutter (tuần 6) — code xong, chờ build APK
+- `mobile/`: Flutter 3.50.1 (Dart 3.14), Android + web. Màn hình: danh sách (trạng thái, tổng tháng, kéo để làm mới, tự làm mới khi đang OCR), chụp/chọn ảnh → upload (thu nhỏ 2000 px, nén 85% trên máy), chi tiết (ảnh phóng to được, form sửa tay, văn bản OCR), cài đặt địa chỉ server (chỉ HTTPS).
+- Flutter 3.47+ tách Material ra gói `material_ui`: code import `package:material_ui/material_ui.dart`.
+- 6 test widget/đơn vị chạy màn hình thật với API giả (`MockClient`) và bộ chọn ảnh giả: danh sách, upload multipart, sửa tay (kiểm body PATCH, giờ +07:00), chặn số âm trước khi gọi server, chỉ chấp nhận HTTPS, thông báo lỗi dễ hiểu. `flutter analyze` sạch; CI có job `mobile`.
+- **TLS tới server dev:** `network_security_config.xml` cấm HTTP; chỉ bản **debug** tin CA do người dùng cài (CA mkcert), bản release chỉ tin CA hệ thống. `init-env.ps1 -RenewCert` cấp lại chứng chỉ edge kèm `10.0.2.2` (emulator) và IP LAN/Tailscale.
+- Manifest chính thêm quyền INTERNET (bản mẫu chỉ có ở debug), `allowBackup=false`.
+- **Chưa xong:** build APK và chạy trên emulator/điện thoại — cần Android SDK (bạn chạy trình cài đặt đầu tiên của Android Studio và tự chấp nhận giấy phép).
 
 ### 4.7 Dựng lại một lệnh + hoàn thiện (tuần 7)
 - Ansible playbook (chạy từ WSL Ubuntu) dựng toàn bộ lên một máy Linux trống (VM hoặc WSL): cài Docker, copy cấu hình, sinh bí mật, `compose up`.
@@ -148,7 +152,7 @@ receiptlens/
 | **3** ✅ | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
 | **4** ✅ | API → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu (đạt: 4,5 s); G2 chờ hoá đơn thật |
 | **5** ✅ | Dashboard web, Grafana, CI + Trivy + GHCR | 16/16 kiểm tra; Trivy 0 HIGH/CRITICAL có bản vá |
-| **6** | App Flutter | Chụp và upload từ điện thoại |
+| **6** ⏳ | App Flutter | Code + 6 test xong; APK chờ Android SDK |
 | **7** | Ansible, (tuỳ chọn) k3s, README, video, CV, portfolio | Repo public hoàn chỉnh |
 
 ---
