@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'platform_client.dart' if (dart.library.js_interop) 'platform_client_web.dart';
 
 class ApiException implements Exception {
   ApiException(this.status, this.message);
@@ -20,7 +21,7 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient(String baseUrl, {http.Client? client})
     : base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'),
-      _client = client ?? http.Client();
+      _client = client ?? platformClient;
 
   final Uri base;
   final http.Client _client;

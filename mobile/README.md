@@ -24,6 +24,22 @@ The tests drive the real screens against a fake API (`package:http/testing.dart`
 2. In the emulator, install the local CA so it trusts the dev server: copy the file `rootCA.pem` from the folder printed by `mkcert -CAROOT` to the emulator (drag and drop onto it), then **Settings → Security → Encryption & credentials → Install a certificate → CA certificate**.
 3. `flutter run` — the default server address `https://10.0.2.2/api` is the PC as seen from the emulator.
 
+On Android the app talks to the server through Cronet (`lib/platform_client.dart`), not `dart:io`: Dart's own TLS stack has its own CA list and ignores both user-installed CAs and `network_security_config.xml`, so the debug build would fail with `CERTIFICATE_VERIFY_FAILED` against the mkcert certificate.
+
+If adb keeps flipping the emulator between `offline` and `authorizing` (`connection terminated: read failed` in `%TEMP%\adb.log`), use adb over the emulator's virtual network instead:
+
+```powershell
+adb -s emulator-5554 tcpip 5557
+```
+
+Then in the emulator console (`telnet localhost 5554`, `auth <token from %USERPROFILE%\.emulator_console_auth_token>`) run `redir add tcp:6557:5557`, and finally:
+
+```powershell
+adb connect 127.0.0.1:6557
+```
+
+Port 6557 is outside the 5555–5585 range adb scans for emulators, so adb does not open a second, competing connection to the same device.
+
 ## Run on an iPhone (web build, no Mac needed)
 
 The same Flutter code is built for the web and served by the edge at `/m/`. In Safari it behaves like the app: the camera opens from "Add receipt", and it can be added to the home screen.

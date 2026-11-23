@@ -106,14 +106,16 @@
 - **Trivy lần đầu** thấy 6 HIGH mỗi image: `zlib1g` (Debian) và urllib3/msgpack/setuptools nằm trong **pip tự đóng gói**. Sửa: `apt-get upgrade` lúc build và **gỡ pip khỏi image chạy** → 0.
 - **Cắt xuống bản 2:** Loki, cAdvisor (đúng thứ tự cắt ở mục 9).
 
-### 4.6 App Flutter (tuần 6) — code, APK, bản web cho iPhone xong; chờ thử trên iPhone
+### 4.6 App Flutter (tuần 6) — xong, đã thử trên emulator Android; bản web chờ thử trên iPhone
 - `mobile/`: Flutter 3.50.1 (Dart 3.14), Android + web. Màn hình: danh sách (trạng thái, tổng tháng, kéo để làm mới, tự làm mới khi đang OCR), chụp/chọn ảnh → upload (thu nhỏ 2000 px, nén 85% trên máy), chi tiết (ảnh phóng to được, form sửa tay, văn bản OCR), cài đặt địa chỉ server (chỉ HTTPS).
 - Flutter 3.47+ tách Material ra gói `material_ui`: code import `package:material_ui/material_ui.dart`.
 - 6 test widget/đơn vị chạy màn hình thật với API giả (`MockClient`) và bộ chọn ảnh giả: danh sách, upload multipart, sửa tay (kiểm body PATCH, giờ +07:00), chặn số âm trước khi gọi server, chỉ chấp nhận HTTPS, thông báo lỗi dễ hiểu. `flutter analyze` sạch; CI có job `mobile`.
 - **TLS tới server dev:** `network_security_config.xml` cấm HTTP; chỉ bản **debug** tin CA do người dùng cài (CA mkcert), bản release chỉ tin CA hệ thống. `init-env.ps1 -RenewCert` cấp lại chứng chỉ edge kèm `10.0.2.2` (emulator) và IP LAN/Tailscale.
 - Manifest chính thêm quyền INTERNET (bản mẫu chỉ có ở debug), `allowBackup=false`.
 - **APK debug build được** (`flutter build apk --debug`, 164 MB do có đủ ABI + thông tin debug). Lỗi gặp phải: Kotlin incremental không đóng được cache khi project ở ổ D: còn pub cache ở ổ C: → `kotlin.incremental=false` trong `android/gradle.properties`.
-- **Emulator:** Android 17 khởi động được nhưng adb liên tục `offline`/`not found` khi chạy cùng stack Docker (máy quá tải), chưa cài được APK.
+- **Emulator — đã thử đầu-cuối (23/11):** Android 17, debug APK, CA mkcert cài ở Settings. Danh sách + tổng tháng, chọn ảnh → upload → OCR đọc đúng 87.000 ₫ trong ~5 s, mở chi tiết, sửa tên cửa hàng → `corrected` (PATCH qua WAF) đều chạy.
+  - **Lỗi thật tìm được:** HTTP client của `dart:io` có kho CA riêng, **bỏ qua** CA người dùng cài và `network_security_config` → `CERTIFICATE_VERIFY_FAILED`. Sửa: trên Android dùng Cronet (`cronet_http`, dùng TLS của Android) qua `lib/platform_client.dart`; web dùng `platform_client_web.dart` (import có điều kiện); test vẫn tiêm `MockClient`.
+  - **adb rớt liên tục** (`connection terminated: read failed`, `offline`↔`authorizing`): kênh adb qua cổng 5555 của emulator không ổn trên máy này. Cách vòng: `adb tcpip 5557`, rồi trên console emulator `redir add tcp:6557:5557`, `adb connect 127.0.0.1:6557`. Cổng 6557 nằm ngoài dải 5555–5585 adb tự quét, nên không sinh kết nối thứ hai giành nhau.
 - **Bản web cho iPhone (người dùng chỉ có iPhone):** cùng code, `flutter build web --base-href /m/ --no-web-resources-cdn --csp --web-content-hash`; edge phục vụ ở `/m/` với CSP riêng (`'wasm-unsafe-eval'` cho CanvasKit, style inline, font gstatic), `index.html`/bootstrap `no-cache`. Bản web gọi API cùng origin. Đã thử ở khung 390×844 qua proxy giữ nguyên CSP: danh sách, tiếng Việt có dấu, chi tiết + ảnh + form đều đúng, không lỗi console. **Chưa thử trên iPhone thật** (cần cài/tin CA mkcert trên máy; chụp ảnh + upload từ Safari chưa kiểm).
 
 ### 4.7 Dựng lại một lệnh + hoàn thiện (tuần 7)
