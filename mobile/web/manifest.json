@@ -1,11 +1,11 @@
 {
-    "name": "receiptlens",
-    "short_name": "receiptlens",
+    "name": "ReceiptLens",
+    "short_name": "ReceiptLens",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "ReceiptLens mobile client",
+    "background_color": "#0E1726",
+    "theme_color": "#0E1726",
+    "description": "Snap a receipt, get your spending.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

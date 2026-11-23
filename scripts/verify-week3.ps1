@@ -20,9 +20,12 @@ function ServedBy() {
 
 "== WAF (ModSecurity + OWASP CRS)"
 Check 'normal request -> 200' ((Code 'https://localhost/api/receipts?limit=1') -eq 200)
-Check "SQL injection in query -> 403" ((Code "https://localhost/api/receipts?month=1'%20OR%201=1--") -eq 403)
-Check 'XSS in query -> 403' ((Code 'https://localhost/api/receipts?q=%3Cscript%3Ealert(1)%3C/script%3E') -eq 403)
-Check 'path traversal -> 403' ((Code 'https://localhost/api/receipts?file=../../etc/passwd') -eq 403)
+$c = Code "https://localhost/api/receipts?month=1'%20OR%201=1--"
+Check "SQL injection in query -> 403 (got $c)" ($c -eq 403)
+$c = Code 'https://localhost/api/receipts?q=%3Cscript%3Ealert(1)%3C/script%3E'
+Check "XSS in query -> 403 (got $c)" ($c -eq 403)
+$c = Code 'https://localhost/api/receipts?file=../../etc/passwd'
+Check "path traversal -> 403 (got $c)" ($c -eq 403)
 $png = Join-Path $env:TEMP 'rl-one.png'
 [IO.File]::WriteAllBytes($png, [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='))
 Check 'real PNG upload still passes the WAF -> 201' ((Code 'https://localhost/api/receipts' @('-X', 'POST', '-F', "file=@$png;type=image/png")) -eq 201)

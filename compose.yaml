@@ -34,6 +34,7 @@ services:
     volumes:
       - ./edge/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
       - ./web:/usr/share/nginx/html:ro
+      - ./mobile/build/web:/usr/share/nginx/mobile:ro   # Flutter web build (flutter build web --base-href /m/ ...)
       - ./edge/certs:/etc/nginx/certs:ro
     networks: [edge, app]
     mem_limit: 256m

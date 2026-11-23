@@ -74,6 +74,28 @@ server {
         proxy_set_header Connection $connection_upgrade;
     }
 
+    # Flutter web build of the mobile app (mobile/build/web), for phones that can't install the APK (iPhone).
+    # Its own CSP: CanvasKit is WebAssembly ('wasm-unsafe-eval'), Flutter injects <style> tags, and text
+    # fallback fonts come from fonts.gstatic.com. Built with --csp, so no eval() of JavaScript.
+    location /m/ {
+        alias /usr/share/nginx/mobile/;
+        try_files $uri $uri/ /m/index.html;
+        types { application/wasm wasm; }
+        default_type application/octet-stream;
+        include /etc/nginx/mime.types;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy no-referrer always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        # index.html and the bootstrap must be revalidated so a new build is picked up.
+        location ~ ^/m/(index\.html|flutter_bootstrap\.js|flutter_service_worker\.js|version\.json|precache_manifest\.json)?$ {
+            alias /usr/share/nginx/mobile/$1;
+            add_header Cache-Control "no-cache" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+    }
+
     # Dashboard: static files only, strict Content-Security-Policy (no inline script, no third parties).
     # Repeating the security headers is required: an add_header here drops the server-level ones.
     location / {
