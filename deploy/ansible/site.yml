@@ -1,0 +1,244 @@
+# One command from an empty Ubuntu 24.04 box (SSH + sudo only) to a running, verified ReceiptLens:
+#   cd deploy/ansible && ansible-playbook -i inventory.ini site.yml
+# Idempotent: re-running keeps existing secrets, data volumes and certificates.
+# Secrets and the TLS CA key are generated ON the target and never leave it.
+- name: Build ReceiptLens on an empty Linux server
+  hosts: receiptlens
+  become: true
+  vars:
+    repo_dir: "{{ playbook_dir }}/../.."
+    app_dir: /opt/receiptlens
+    edge_port: "{{ published_port | default(443) }}"   # set published_port in the inventory
+    edge_uid: 101          # nginx user inside owasp/modsecurity-crs; must read the TLS key
+    compose: docker compose --project-directory {{ app_dir }}
+    # `is file` tests run on the control node, where the repo is.
+    mobile_web_built: "{{ (repo_dir ~ '/mobile/build/web/index.html') is file }}"
+    secret: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}"
+
+  tasks:
+    # ---------- Docker Engine from Docker's own apt repository ----------
+    - name: Base packages
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, python3-cryptography, python3-debian]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Docker apt key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Docker apt repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_facts['distribution_release'] }}"
+        components: stable
+        architectures: amd64
+        signed_by: /etc/apt/keyrings/docker.asc
+
+    - name: Docker Engine + Compose plugin
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        update_cache: true
+
+    - name: Docker running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    # ---------- Source: files git tracks or would track; .gitignore keeps out .env, keys, certs, venvs ----------
+    - name: Pack the source tree on the control node
+      ansible.builtin.shell:
+        cmd: >-
+          git -c safe.directory='*' ls-files -z --cached --others --exclude-standard
+          | tar --null --ignore-failed-read -T - -czf /tmp/receiptlens-src.tgz
+        chdir: "{{ repo_dir }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: Pack the Flutter web build if it exists (it is a build output, not in git)
+      ansible.builtin.command:
+        cmd: tar -czf /tmp/receiptlens-mobile-web.tgz -C {{ repo_dir }}/mobile/build web
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+      when: mobile_web_built
+
+    - name: App directory
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: ["{{ app_dir }}", "{{ app_dir }}/mobile/build"]
+
+    - name: Unpack source
+      ansible.builtin.unarchive:
+        src: /tmp/receiptlens-src.tgz
+        dest: "{{ app_dir }}"
+
+    - name: Unpack Flutter web build
+      ansible.builtin.unarchive:
+        src: /tmp/receiptlens-mobile-web.tgz
+        dest: "{{ app_dir }}/mobile/build"
+      when: mobile_web_built
+
+    # ---------- Secrets: generated once on the target, kept on re-runs ----------
+    - name: .env with random secrets (kept if it already exists)
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/.env"
+        force: false
+        owner: root
+        mode: "0600"
+        content: |
+          POSTGRES_USER=receiptlens
+          POSTGRES_PASSWORD={{ secret }}
+          API_DB_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          RABBITMQ_USER=receiptlens
+          RABBITMQ_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          RABBITMQ_API_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          RABBITMQ_OCR_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          S3_ADMIN_KEY=admin{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_lowercase', 'digits'], length=12) }}
+          S3_ADMIN_SECRET={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          S3_API_KEY=api{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_lowercase', 'digits'], length=12) }}
+          S3_API_SECRET={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          S3_OCR_KEY=ocr{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_lowercase', 'digits'], length=12) }}
+          S3_OCR_SECRET={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+          GRAFANA_ADMIN_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}
+      no_log: true
+
+    - name: Published edge port
+      ansible.builtin.lineinfile:
+        path: "{{ app_dir }}/.env"
+        regexp: '^EDGE_PORT='
+        line: "EDGE_PORT={{ edge_port }}"
+
+    # ---------- TLS: a small local CA on the target signs the edge certificate ----------
+    - name: Certificate directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ app_dir }}/ca", mode: "0700" }          # CA key: root only, not mounted anywhere
+        - { path: "{{ app_dir }}/edge/certs", mode: "0755" }
+
+    - name: CA key
+      community.crypto.openssl_privatekey:
+        path: "{{ app_dir }}/ca/ca-key.pem"
+        mode: "0600"
+
+    - name: CA CSR
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ app_dir }}/ca/ca-key.pem"
+        common_name: ReceiptLens local CA ({{ inventory_hostname }})
+        use_common_name_for_san: false
+        basic_constraints: ["CA:TRUE"]
+        basic_constraints_critical: true
+        key_usage: [keyCertSign]
+        key_usage_critical: true
+      register: ca_csr
+      changed_when: false
+
+    - name: CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ app_dir }}/ca/ca.pem"
+        csr_content: "{{ ca_csr.csr }}"
+        privatekey_path: "{{ app_dir }}/ca/ca-key.pem"
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"
+        mode: "0644"
+
+    - name: Edge key (readable by the nginx user in the edge container only)
+      community.crypto.openssl_privatekey:
+        path: "{{ app_dir }}/edge/certs/edge-key.pem"
+        owner: root
+        group: "{{ edge_uid }}"
+        mode: "0640"
+
+    - name: Edge CSR
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ app_dir }}/edge/certs/edge-key.pem"
+        subject_alt_name: ["DNS:localhost", "IP:127.0.0.1", "DNS:{{ ansible_facts['hostname'] }}"]
+      register: edge_csr
+      changed_when: false
+
+    - name: Edge certificate signed by the local CA
+      community.crypto.x509_certificate:
+        path: "{{ app_dir }}/edge/certs/edge.pem"
+        csr_content: "{{ edge_csr.csr }}"
+        provider: ownca
+        ownca_path: "{{ app_dir }}/ca/ca.pem"
+        ownca_privatekey_path: "{{ app_dir }}/ca/ca-key.pem"
+        ownca_not_after: "+365d"
+        mode: "0644"
+      notify: Restart edge
+
+    # ---------- Start ----------
+    - name: Build images and start the stack (first run builds the OCR image, ~10 min)
+      ansible.builtin.command:
+        cmd: "{{ compose }} up -d --build --remove-orphans"
+      async: 3600
+      poll: 20
+      register: up
+      changed_when: "'Started' in up.stderr or 'Recreated' in up.stderr or 'Created' in up.stderr"
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    # ---------- Smoke test through the public path: edge (TLS + WAF) -> HAProxy -> API -> OCR ----------
+    - name: API is healthy through the edge
+      ansible.builtin.uri:
+        url: "https://localhost:{{ edge_port }}/api/healthz"
+        ca_path: "{{ app_dir }}/ca/ca.pem"
+      register: health
+      until: health.status == 200
+      retries: 40
+      delay: 5
+
+    - name: WAF blocks SQL injection
+      ansible.builtin.uri:
+        url: "https://localhost:{{ edge_port }}/api/receipts?month=1'%20OR%201=1--"
+        ca_path: "{{ app_dir }}/ca/ca.pem"
+        status_code: 403
+
+    - name: Upload the synthetic test receipt
+      ansible.builtin.uri:
+        url: "https://localhost:{{ edge_port }}/api/receipts"
+        ca_path: "{{ app_dir }}/ca/ca.pem"
+        method: POST
+        body_format: form-multipart
+        body:
+          file:
+            filename: "{{ repo_dir }}/tests/fixtures/receipt_87000.png"   # read on the control node
+            mime_type: image/png
+        status_code: 201
+      register: upload
+
+    - name: OCR reads the total
+      ansible.builtin.uri:
+        url: "https://localhost:{{ edge_port }}/api/receipts/{{ upload.json.id }}"
+        ca_path: "{{ app_dir }}/ca/ca.pem"
+      register: receipt
+      until: receipt.json.status in ['parsed', 'failed']
+      retries: 60
+      delay: 5
+
+    - name: Result
+      ansible.builtin.assert:
+        that:
+          - receipt.json.status == 'parsed'
+          - receipt.json.total_vnd == 87000
+        success_msg: "ReceiptLens is up on https://{{ inventory_hostname }}:{{ edge_port }}/ and OCR read 87.000 đ"
+
+  handlers:
+    - name: Restart edge
+      ansible.builtin.command:
+        cmd: "{{ compose }} restart edge"
+      changed_when: true

@@ -118,10 +118,14 @@
   - **adb rớt liên tục** (`connection terminated: read failed`, `offline`↔`authorizing`): kênh adb qua cổng 5555 của emulator không ổn trên máy này. Cách vòng: `adb tcpip 5557`, rồi trên console emulator `redir add tcp:6557:5557`, `adb connect 127.0.0.1:6557`. Cổng 6557 nằm ngoài dải 5555–5585 adb tự quét, nên không sinh kết nối thứ hai giành nhau.
 - **Bản web cho iPhone (người dùng chỉ có iPhone):** cùng code, `flutter build web --base-href /m/ --no-web-resources-cdn --csp --web-content-hash`; edge phục vụ ở `/m/` với CSP riêng (`'wasm-unsafe-eval'` cho CanvasKit, style inline, font gstatic), `index.html`/bootstrap `no-cache`. Bản web gọi API cùng origin. Đã thử ở khung 390×844 qua proxy giữ nguyên CSP: danh sách, tiếng Việt có dấu, chi tiết + ảnh + form đều đúng, không lỗi console. **Chưa thử trên iPhone thật** (cần cài/tin CA mkcert trên máy; chụp ảnh + upload từ Safari chưa kiểm).
 
-### 4.7 Dựng lại một lệnh + hoàn thiện (tuần 7)
-- Ansible playbook (chạy từ WSL Ubuntu) dựng toàn bộ lên một máy Linux trống (VM hoặc WSL): cài Docker, copy cấu hình, sinh bí mật, `compose up`.
-- (Nâng cao, tuỳ chọn) chuyển sang **k3s** với HPA để có autoscaling "thật" kiểu Kubernetes.
-- README: sơ đồ, bảng ở mục 2, bằng chứng mục 7, video demo; dòng CV; thẻ dự án trên portfolio.
+### 4.7 Dựng lại một lệnh + hoàn thiện (tuần 7) — đã làm
+- **Máy đích "trống":** `scripts/new-wsl-target.ps1` tạo distro WSL Ubuntu 24.04 mới chỉ có SSH (cổng 2222, chỉ khoá) + user `deploy` có sudo. Thay cho một VM mới; xoá bằng `wsl --unregister rl-target`.
+- **`deploy/ansible/site.yml`** (Ansible 15.0.0 / core 2.22 trong venv ở WSL Ubuntu): cài Docker Engine từ apt repo của Docker → chép mã nguồn (`git ls-files` có tôn trọng `.gitignore`, nên `.env`/khoá/chứng chỉ không đi theo) + bản Flutter web nếu đã build → sinh `.env` **trên máy đích** (mode 0600, giữ nguyên khi chạy lại) → CA nhỏ bằng `community.crypto` trên máy đích ký chứng chỉ edge (khoá edge chỉ nhóm uid 101 = nginx trong container đọc được) → `compose up --build` → tự kiểm: healthz qua edge, WAF chặn SQLi (403), upload hoá đơn mẫu, chờ OCR đọc 87.000 đ.
+- `compose.yaml`: cổng publish thành `${EDGE_PORT:-443}` (máy đích dùng 8443 vì 443 đang do Docker Desktop giữ); mặc định không đổi, verify tuần 1 vẫn đạt.
+- Lỗi gặp: `ansible.cfg` bị bỏ qua vì `/mnt/d` cho mọi người ghi → bỏ cfg, chạy `-i inventory.ini`; `deb822_repository` cần `python3-debian`; `uri` multipart đọc file trên máy điều khiển, không phải máy đích.
+- Kết quả + thời gian: [docs/evidence/week7-ansible.md](docs/evidence/week7-ansible.md). Chạy lại lần hai: 48 s, `failed=0`.
+- Đã làm: README cuối (sơ đồ, bảng GCP ↔ tự dựng, bảng bằng chứng), thẻ ReceiptLens trên portfolio (chưa deploy), dòng CV (mục 10).
+- **Chưa làm:** k3s + HPA (tuỳ chọn, bỏ qua); video demo (cần bạn tự quay); đo OCR trên 30 hoá đơn thật; remote GitHub + chạy CI thật.
 
 ---
 
@@ -201,6 +205,8 @@ Chi phí duy nhất là **tài nguyên máy**: nên có RAM ≥ 8 GB; PaddleOCR 
 
 ---
 
-## 10. Dòng CV khi xong (điền số thật)
+## 10. Dòng CV (số thật, đo 22–23/11/2026)
 
-> **ReceiptLens**: Self-hosted receipt-OCR platform replicating Google Cloud patterns with open source: segmented Docker networks with an internet-isolated data tier, Nginx + ModSecurity WAF, HAProxy load balancing with a metrics-driven autoscaler, event pipeline SeaweedFS (S3) → RabbitMQ → PaddleOCR worker, FastAPI + PostgreSQL, Flutter client, Prometheus/Grafana, CI with Trivy, one-command rebuild via Ansible. p95 < **X** ms at **Y** RPS; **Z**% total-amount accuracy on 30 real receipts.
+> **ReceiptLens** — Self-hosted receipt-OCR platform rebuilding Google Cloud patterns with open source, at zero cost. Segmented Docker networks with an Internet-isolated data tier; Nginx + ModSecurity (OWASP CRS) as the single TLS entry point; HAProxy load balancing with a Prometheus-driven autoscaler (9,074 requests at 80 req/s, 0 errors, p95 10.72 ms). Event pipeline FastAPI → RabbitMQ (dead-lettering) → PaddleOCR worker, PostgreSQL, S3-compatible storage, least-privilege credentials per service. Flutter client (Android + web), Prometheus/Grafana, CI with a Trivy gate, one-command Ansible rebuild on an empty Ubuntu server.
+
+Thêm vế độ chính xác (ví dụ "*Z*% of totals read correctly on 30 real receipts") **chỉ sau khi đã đo** với ảnh trong `samples/`.

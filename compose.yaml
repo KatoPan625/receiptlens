@@ -25,7 +25,7 @@ services:
     # Nginx + ModSecurity v3 + OWASP Core Rule Set, runs as an unprivileged user on 8443.
     image: owasp/modsecurity-crs:4.25.2-nginx-lts
     ports:
-      - "443:8443"       # the ONLY published port in the whole stack
+      - "${EDGE_PORT:-443}:8443"   # the ONLY published port in the whole stack
     environment:
       MODSEC_RULE_ENGINE: "on"     # block, not just detect
       BLOCKING_PARANOIA: "1"
