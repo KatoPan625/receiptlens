@@ -42,12 +42,27 @@ def test_skeleton_survives_dropped_vowels():
 
 def test_real_ocr_output_of_synthetic_receipt():
     # Text exactly as PaddleOCR PP-OCRv6 returned it for tests/fixtures/make_receipt.py
-    text = "\n".join([
-        "CÀ PHÊ SÁNG", "12 Nguyn Hu, Qun 1, TP.HCM", "Ngày: 20/11/2026 09:30",
-        "Cà phê sũa đá x2", "70.000", "Bánh mì tht x1", "30.000", "Tồng tin hàng", "100.000",
-        "Phí dch v", "25.000", "TÔNG CÔNG: 125.000đ", "Tin khách đưa", "500.000",
-        "Tièn thùa", "375.000", "Cm on quý khách!",
-    ])
+    text = "\n".join(
+        [
+            "CÀ PHÊ SÁNG",
+            "12 Nguyn Hu, Qun 1, TP.HCM",
+            "Ngày: 20/11/2026 09:30",
+            "Cà phê sũa đá x2",
+            "70.000",
+            "Bánh mì tht x1",
+            "30.000",
+            "Tồng tin hàng",
+            "100.000",
+            "Phí dch v",
+            "25.000",
+            "TÔNG CÔNG: 125.000đ",
+            "Tin khách đưa",
+            "500.000",
+            "Tièn thùa",
+            "375.000",
+            "Cm on quý khách!",
+        ]
+    )
     assert guess_total(text) == 125000
     assert guess_date(text) == datetime(2026, 11, 20, 9, 30, tzinfo=VN)
     assert guess_merchant(text) == "CÀ PHÊ SÁNG"

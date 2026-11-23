@@ -4,6 +4,7 @@ PaddleOCR often drops vowels that carry two diacritics (ề, ễ, ệ, ụ...): 
 as "Tin". Keywords are therefore compared on a consonant skeleton: diacritics removed,
 then vowels removed, so "tiền", "tien" and "tin" all become "tn".
 """
+
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -12,8 +13,14 @@ VN_TZ = timezone(timedelta(hours=7))
 
 # Higher number wins: "amount to pay" beats "subtotal".
 KEYWORDS = {
-    "khach can tra": 3, "khach phai tra": 3, "tong thanh toan": 3, "can thanh toan": 3,
-    "thanh toan": 2, "tong cong": 2, "tong tien": 1, "total": 1,
+    "khach can tra": 3,
+    "khach phai tra": 3,
+    "tong thanh toan": 3,
+    "can thanh toan": 3,
+    "thanh toan": 2,
+    "tong cong": 2,
+    "tong tien": 1,
+    "total": 1,
 }
 # Lines that look like totals but are not what the customer paid.
 EXCLUDE = ("tien khach dua", "tien thua", "tra lai", "giam gia", "chiet khau", "tong tien hang")
@@ -43,7 +50,7 @@ def amounts(line: str) -> list[int]:
 
 
 def guess_total(text: str) -> int | None:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     best = None  # (priority, line index, amount)
     for i, line in enumerate(lines):
         sk = f" {skeleton(line)} "
@@ -75,7 +82,7 @@ def guess_date(text: str) -> datetime | None:
 
 def guess_merchant(text: str) -> str | None:
     """First of the top 3 lines that is mostly letters (shop names lead the receipt)."""
-    for line in [l.strip() for l in text.splitlines() if l.strip()][:3]:
+    for line in [ln.strip() for ln in text.splitlines() if ln.strip()][:3]:
         letters = sum(c.isalpha() for c in line)
         if letters >= 3 and letters > 2 * sum(c.isdigit() for c in line):
             return line[:200]

@@ -5,6 +5,7 @@ thermal print. Accuracy claims must come from samples/ (real photos), not from t
 
 Usage: python tests/fixtures/make_receipt.py out.png [total_vnd]
 """
+
 import sys
 from pathlib import Path
 

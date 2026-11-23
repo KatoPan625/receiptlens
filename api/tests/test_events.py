@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pytest
 from pika.exceptions import AMQPConnectionError
@@ -21,8 +21,14 @@ def session():
 
 
 def add(session, status="uploaded", attempts=1, age=timedelta(minutes=5)):
-    r = Receipt(id=uuid.uuid4(), object_key=f"k/{uuid.uuid4()}.png", content_type="image/png",
-                status=status, ocr_attempts=attempts, updated_at=NOW - age)
+    r = Receipt(
+        id=uuid.uuid4(),
+        object_key=f"k/{uuid.uuid4()}.png",
+        content_type="image/png",
+        status=status,
+        ocr_attempts=attempts,
+        updated_at=NOW - age,
+    )
     session.add(r)
     session.commit()
     return r
@@ -30,9 +36,18 @@ def add(session, status="uploaded", attempts=1, age=timedelta(minutes=5)):
 
 def test_apply_parsed_result(session):
     r = add(session)
-    ok = events.apply_result(session, {"id": str(r.id), "status": "parsed", "merchant": "CÀ PHÊ SÁNG",
-                                       "total_vnd": 125000, "purchased_at": "2026-11-20T09:30:00+07:00",
-                                       "raw_text": "...", "confidence": 0.98})
+    ok = events.apply_result(
+        session,
+        {
+            "id": str(r.id),
+            "status": "parsed",
+            "merchant": "CÀ PHÊ SÁNG",
+            "total_vnd": 125000,
+            "purchased_at": "2026-11-20T09:30:00+07:00",
+            "raw_text": "...",
+            "confidence": 0.98,
+        },
+    )
     assert ok and r.status == "parsed" and r.total_vnd == 125000 and r.merchant == "CÀ PHÊ SÁNG"
 
 
@@ -67,6 +82,7 @@ def test_sweep_resends_stale_and_gives_up(session, monkeypatch):
 def test_sweep_stops_when_broker_is_down(session, monkeypatch):
     def down(_r):
         raise AMQPConnectionError("down")
+
     monkeypatch.setattr(events, "request_ocr", down)
     r = add(session)
     assert events.sweep(session, now=NOW) == (0, 0)

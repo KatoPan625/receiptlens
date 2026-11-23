@@ -2,6 +2,7 @@
 
 Revision ID: 0002
 """
+
 import sqlalchemy as sa
 from alembic import op
 

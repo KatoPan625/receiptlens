@@ -1,0 +1,27 @@
+﻿# Week 5 verification — 2026-11-23 12:02
+
+== Dashboard
+GET / -> 200                                                       PASS
+app.js and style.css served                                        PASS
+CSP present: script-src 'self', no unsafe-inline                   PASS
+app.js never writes data with innerHTML                            PASS
+stored-XSS payload in PATCH blocked by WAF -> 403                  PASS
+
+== Grafana (only through the edge, behind its login)
+GET /grafana/api/health -> 200                                     PASS
+API without login -> 401                                           PASS
+provisioned dashboard has 8 panels (got 8)                         PASS
+Prometheus datasource healthy (OK)                                 PASS
+
+== Metrics coverage
+targets up: api, haproxy, rabbitmq                                 PASS
+
+== Supply chain (same gates as CI)
+receiptlens-api: fixable HIGH/CRITICAL = 0                         PASS
+receiptlens-ocr-worker: fixable HIGH/CRITICAL = 0                  PASS
+ruff check                                                         PASS
+ruff format --check                                                PASS
+pytest tests (parser, worker, autoscaler)                          PASS
+pytest api/tests                                                   PASS
+
+All checks passed

@@ -1,0 +1,75 @@
+/* Same palette as the portfolio: navy, ivory, bronze. System fonts only (no third-party requests, strict CSP). */
+:root {
+  --bg: #0e1726; --surface: #121d30; --ink: #ece4d4; --muted: #a3aab8;
+  --gold: #c8a96a; --rule: #2b3a55; --bad: #f2a3a3; --ok: #9fd3a6;
+  --serif: "Cormorant Garamond", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f6f1e7; --surface: #efe8da; --ink: #1b2a44; --muted: #5f584b; --gold: #7a5f2b;
+          --rule: #d6cbb5; --bad: #a32020; --ok: #2c6b35; color-scheme: light; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 1rem/1.6 var(--sans); }
+a { color: var(--gold); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+.top { display: flex; align-items: center; gap: 24px; max-width: 980px; margin: 0 auto; padding: 18px 16px; border-bottom: 1px solid var(--rule); }
+.mark { font: italic 600 1.6rem/1 var(--serif); color: var(--gold); }
+.top nav { margin-left: auto; display: flex; gap: 20px; }
+.top nav a { font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; text-decoration: none; color: var(--muted); padding: 8px 0; }
+.top nav a:hover { color: var(--gold); }
+
+main { max-width: 980px; margin: 0 auto; padding: 8px 16px 64px; }
+section { padding: 32px 0; border-bottom: 1px solid var(--rule); }
+h1, h2 { font: 500 2rem/1.2 var(--serif); margin: 0 0 18px; }
+
+.drop { display: grid; place-items: center; gap: 4px; min-height: 140px; padding: 24px; text-align: center;
+        border: 1px dashed var(--gold); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.drop.over { border-style: solid; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop:focus-within { outline: 2px solid var(--gold); outline-offset: 3px; }
+.drop small { color: var(--muted); }
+.msg { min-height: 1.6em; margin: 10px 0 0; color: var(--muted); }
+.msg.bad { color: var(--bad); }
+
+.bars { display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: 80px 1fr auto; gap: 14px; align-items: center; }
+.track { height: 10px; background: var(--surface); border-radius: 5px; overflow: hidden; }
+.fill { display: block; height: 100%; background: var(--gold); }
+.empty { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--rule); }
+th { font-size: .72rem; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); font-weight: 500; }
+tbody tr[tabindex] { cursor: pointer; }
+tbody tr[tabindex]:hover { background: var(--surface); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.badge { font-size: .8rem; }
+.badge.uploaded { color: var(--muted); }
+.badge.parsed, .badge.corrected { color: var(--ok); }
+.badge.failed { color: var(--bad); }
+
+dialog { width: min(900px, 100vw - 32px); max-height: calc(100vh - 32px); padding: 24px; border: 1px solid var(--rule);
+         border-radius: 8px; background: var(--bg); color: var(--ink); }
+dialog::backdrop { background: rgb(0 0 0 / .6); }
+.close { position: absolute; top: 8px; right: 8px; }
+.close button { width: 44px; height: 44px; font-size: 1.6rem; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.detail { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.detail img { width: 100%; max-height: 70vh; object-fit: contain; background: var(--surface); border-radius: 6px; }
+#edit { display: grid; gap: 14px; }
+#edit label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+#edit input { min-height: 44px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--surface);
+              border: 1px solid var(--rule); border-radius: 4px; }
+#edit button { min-height: 44px; font: inherit; letter-spacing: .12em; text-transform: uppercase; font-size: .8rem;
+               color: var(--bg); background: var(--gold); border: 0; border-radius: 4px; cursor: pointer; }
+pre { white-space: pre-wrap; font-size: .85rem; background: var(--surface); padding: 12px; border-radius: 4px; }
+summary { cursor: pointer; margin-top: 16px; color: var(--gold); }
+
+@media (max-width: 680px) {
+  .detail { grid-template-columns: 1fr; }
+  .bar { grid-template-columns: 64px 1fr; }
+  .bar .num { grid-column: 2; text-align: left; }
+  th:nth-child(4), td:nth-child(4) { display: none; }
+}

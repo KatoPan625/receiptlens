@@ -226,3 +226,42 @@ powershell -NoProfile -File scripts\verify-week4.ps1
 - [x] Ảnh hỏng → `failed`; tin nhắn hỏng → DLQ `ocr.requests.dead`
 - [x] User RabbitMQ `api`/`ocr` chỉ dùng được queue của mình; key S3 của worker chỉ đọc
 - [ ] Độ chính xác trên 30 hoá đơn thật (G2): chụp ảnh vào `samples/`, chạy `spike_ocr.py`, điền bảng ở mục 2 tuần 0
+
+---
+
+# Tuần 5 — Dashboard, Grafana, CI
+
+1. Bổ sung mật khẩu Grafana vào `.env`, rồi build và chạy:
+
+```powershell
+powershell -NoProfile -File scripts\init-env.ps1
+```
+
+```powershell
+docker compose up -d --build
+```
+
+2. Mở **https://localhost/** (dashboard) và **https://localhost/grafana/** (đăng nhập `admin`, mật khẩu là `GRAFANA_ADMIN_PASSWORD` trong `.env`). Trình duyệt sẽ cảnh báo chứng chỉ cho tới khi bạn tự chạy `mkcert -install`.
+
+3. Kiểm tra (16 mục: CSP, chặn XSS, Grafana bắt đăng nhập, số liệu, Trivy, ruff, pytest):
+
+```powershell
+powershell -NoProfile -File scripts\verify-week5.ps1
+```
+
+4. Lint và test như CI:
+
+```powershell
+.\.venv\Scripts\python -m pip install -r api\requirements-dev.txt ruff==0.17.6
+```
+
+```powershell
+.\.venv\Scripts\python -m ruff check .; .\.venv\Scripts\python -m ruff format --check .; .\.venv\Scripts\python -m pytest -q tests; Set-Location api; ..\.venv\Scripts\python -m pytest -q tests; Set-Location ..
+```
+
+CI (`.github/workflows/ci.yml`) chạy tự động khi repo có trên GitHub.
+
+- [x] Dashboard: upload, danh sách, sửa tay, biểu đồ tháng; CSP chặt; desktop + điện thoại
+- [x] Grafana sau đăng nhập, dashboard 8 panel tự nạp
+- [x] Trivy: 0 lỗ hổng HIGH/CRITICAL có bản vá ở cả 2 image
+- [ ] CI chạy thật trên GitHub (khi đẩy repo lên)

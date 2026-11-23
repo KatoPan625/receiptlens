@@ -4,6 +4,7 @@ Usage: python ocr_worker/spike_ocr.py samples
 First run downloads the OCR models. Runs on CPU; no cloud account needed.
 Writes raw text and a summary to spike_output/ (git-ignored: may contain personal data).
 """
+
 import json
 import sys
 from pathlib import Path

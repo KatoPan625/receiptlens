@@ -26,6 +26,7 @@ $wanted = [ordered]@{
     S3_API_SECRET     = New-Secret
     S3_OCR_KEY        = "ocr$(New-Secret 9)"
     S3_OCR_SECRET     = New-Secret
+    GRAFANA_ADMIN_PASSWORD = New-Secret
 }
 # Keep every existing value; only append keys that are missing (e.g. added in a later week).
 $have = @{}

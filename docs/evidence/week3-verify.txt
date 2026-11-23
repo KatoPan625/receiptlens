@@ -1,4 +1,4 @@
-﻿# Week 3 verification — 2026-11-22 21:24
+﻿# Week 3 verification — 2026-11-23 12:02
 
 == WAF (ModSecurity + OWASP CRS)
 normal request -> 200                                            PASS
@@ -14,12 +14,12 @@ DELETE is not an allowed method -> 403                           PASS
 reads are not throttled by the upload limit                      PASS
 
 == Load balancing (HAProxy, 2 replicas)
-12 requests spread over 2 replicas (df5cb00acef9x6, b598a2eaf968x6) PASS
+12 requests spread over 2 replicas (d3fbb41cba1cx6, 23bf770ec6d4x6) PASS
 
 == Failover: one replica dies, requests keep succeeding
 30 requests over 6 s after killing a replica -> all 200 (got 30) PASS
 
 == Metrics
-Prometheus scrapes api replicas + haproxy (2 targets up)         PASS
+Prometheus scrapes api replicas + haproxy (3 targets up)         PASS
 
 All checks passed

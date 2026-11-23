@@ -1,4 +1,5 @@
 """Thin S3 wrapper so routes don't depend on boto3 directly (tests swap in a fake)."""
+
 from collections.abc import Iterator
 from functools import lru_cache
 from typing import Protocol
@@ -24,8 +25,13 @@ class S3Storage:
             aws_access_key_id=key,
             aws_secret_access_key=secret,
             region_name="us-east-1",
-            config=Config(s3={"addressing_style": "path"}, signature_version="s3v4",
-                          retries={"max_attempts": 3}, connect_timeout=3, read_timeout=10),
+            config=Config(
+                s3={"addressing_style": "path"},
+                signature_version="s3v4",
+                retries={"max_attempts": 3},
+                connect_timeout=3,
+                read_timeout=10,
+            ),
         )
 
     def put(self, key: str, data: bytes, content_type: str) -> None:

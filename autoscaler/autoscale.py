@@ -8,6 +8,7 @@ Usage (from the repo root):
     python autoscaler/autoscale.py                      # loop forever
     python autoscaler/autoscale.py --once --dry-run     # one decision, change nothing
 """
+
 import argparse
 import csv
 import json
@@ -21,8 +22,9 @@ from pathlib import Path
 QUERY = 'sum(rate(haproxy_backend_http_requests_total{proxy="api"}[30s]))'
 
 
-def desired_replicas(rps: float, current: int, target_rps: float, lo: int, hi: int,
-                     below_since: float | None, now: float, cooldown: float) -> tuple[int, float | None]:
+def desired_replicas(
+    rps: float, current: int, target_rps: float, lo: int, hi: int, below_since: float | None, now: float, cooldown: float
+) -> tuple[int, float | None]:
     """Return (replicas to run, timestamp since load has been low enough to shrink).
 
     Scale up at once. Scale down only when one replica fewer would still have 20% headroom
@@ -39,7 +41,8 @@ def desired_replicas(rps: float, current: int, target_rps: float, lo: int, hi: i
 
 
 def compose(*args: str) -> str:
-    return subprocess.run(["docker", "compose", *args], check=True, capture_output=True, text=True).stdout
+    # Fixed argv, no shell; args come from this script only.
+    return subprocess.run(["docker", "compose", *args], check=True, capture_output=True, text=True).stdout  # noqa: S603, S607
 
 
 def current_rps() -> float:

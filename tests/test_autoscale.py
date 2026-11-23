@@ -18,7 +18,7 @@ def test_never_exceeds_max_or_goes_below_min():
 
 def test_scale_down_waits_for_cooldown():
     want, since = desired_replicas(5, 3, below_since=None, now=100, **ARGS)
-    assert (want, since) == (3, 100)          # low load starts the clock
+    assert (want, since) == (3, 100)  # low load starts the clock
     assert desired_replicas(5, 3, below_since=since, now=130, **ARGS) == (3, 100)
     assert desired_replicas(5, 3, below_since=since, now=160, **ARGS) == (2, None)  # one step down
 

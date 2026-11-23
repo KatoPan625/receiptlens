@@ -3,7 +3,7 @@ import socket
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -38,8 +38,9 @@ app = FastAPI(title="ReceiptLens API", lifespan=lifespan)
 
 REPLICA = socket.gethostname()  # container ID; shows which replica HAProxy picked
 REQUESTS = Counter("http_requests_total", "HTTP requests", ["method", "route", "status"])
-LATENCY = Histogram("http_request_duration_seconds", "Request latency", ["route"],
-                    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5))
+LATENCY = Histogram(
+    "http_request_duration_seconds", "Request latency", ["route"], buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5)
+)
 
 
 @app.middleware("http")
@@ -59,6 +60,7 @@ async def observe(request: Request, call_next):
 def metrics() -> Response:
     # Not reachable from outside: the edge returns 404 for /api/metrics; Prometheus scrapes replicas directly.
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 SessionDep = Annotated[Session, Depends(get_session)]
 StorageDep = Annotated[Storage, Depends(get_storage)]
@@ -125,7 +127,7 @@ async def upload_receipt(file: UploadFile, session: SessionDep, storage: Storage
         raise HTTPException(415, "Only JPEG, PNG or WebP images are accepted")
     ctype, ext = kind
     rid = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     key = f"{now:%Y/%m}/{rid}.{ext}"
     try:
         storage.put(key, data, ctype)
@@ -162,8 +164,8 @@ def list_receipts(
     q = select(Receipt).order_by(Receipt.created_at.desc()).limit(limit).offset(offset)
     if month:
         y, m = map(int, month.split("-"))
-        start = datetime(y, m, 1, tzinfo=timezone.utc)
-        end = datetime(y + (m == 12), m % 12 + 1, 1, tzinfo=timezone.utc)
+        start = datetime(y, m, 1, tzinfo=UTC)
+        end = datetime(y + (m == 12), m % 12 + 1, 1, tzinfo=UTC)
         q = q.where(Receipt.created_at >= start, Receipt.created_at < end)
     return list(session.scalars(q))
 
@@ -193,8 +195,7 @@ def get_image(receipt_id: uuid.UUID, session: SessionDep, storage: StorageDep) -
         yield first
         yield from chunks
 
-    return StreamingResponse(body(), media_type=receipt.content_type,
-                             headers={"Cache-Control": "private, max-age=300"})
+    return StreamingResponse(body(), media_type=receipt.content_type, headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.patch("/receipts/{receipt_id}", response_model=ReceiptDetail)

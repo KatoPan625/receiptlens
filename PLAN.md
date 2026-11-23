@@ -98,10 +98,13 @@
 - Bằng chứng: `docs/evidence/week4-verify.txt` (14/14): hoá đơn mẫu đi hết đường ống trong 4,5 s, đúng tổng/ngày/cửa hàng; ảnh hỏng thành `failed`; tin độc vào DLQ; user RabbitMQ bị `ACCESS_REFUSED` ngoài quyền; worker không ra Internet.
 - **Chưa làm:** đo độ chính xác trên 30 hoá đơn thật (G2) — chờ ảnh thật trong `samples/`.
 
-### 4.5 Web, giám sát, CI (tuần 5)
-- Dashboard tĩnh (HTML/JS, cùng phong cách portfolio) do Nginx phục vụ: upload, danh sách, sửa tay, biểu đồ tháng.
-- Prometheus + Grafana + Loki + cAdvisor; dashboard RPS, p95, số bản sao, độ dài hàng đợi, lỗi OCR.
-- GitHub Actions (miễn phí cho repo public): `ruff`, `pytest`, build image, **Trivy** quét, đẩy image lên **GHCR**.
+### 4.5 Web, giám sát, CI (tuần 5) — đã làm
+- **Dashboard** (`web/`, HTML/CSS/JS thuần, cùng bảng màu portfolio, chỉ dùng font hệ thống): kéo-thả/chụp ảnh để upload, danh sách tự làm mới khi còn hoá đơn đang đọc, hộp chi tiết có ảnh gốc + văn bản OCR + form sửa tay (giờ Việt Nam), biểu đồ chi tiêu theo tháng. Dữ liệu chỉ chèn bằng `textContent`. Edge gắn **CSP chặt** (`script-src 'self'`, không `unsafe-inline`, không bên thứ ba).
+- **Grafana 13.3** trong mạng `app`, chỉ vào được qua edge ở `/grafana/`, bắt đăng nhập (mật khẩu ngẫu nhiên trong `.env`), tắt đăng ký và truy cập ẩn danh. Datasource + dashboard 8 panel tự nạp (req/s, p95, số bản sao API theo thời gian, độ dài hàng đợi, tin trong DLQ, lỗi 5xx). WAF tắt riêng cho `/grafana/` vì CRS coi PromQL là tấn công injection; Grafana tự xác thực.
+- **Prometheus** thêm số liệu RabbitMQ theo từng queue (`/metrics/detailed?family=queue_coarse_metrics`).
+- **CI** (`.github/workflows/ci.yml`): ruff (lint + bandit + format), pytest 2 bộ, build 2 image, **Trivy chặn HIGH/CRITICAL đã có bản vá**, đẩy GHCR khi merge `main`. Action bên thứ ba ghim theo commit SHA. Job lint-test đã chạy thử trong container Python sạch (lộ ra lỗi `import app` khi gọi `pytest` trực tiếp → thêm `api/pytest.ini`).
+- **Trivy lần đầu** thấy 6 HIGH mỗi image: `zlib1g` (Debian) và urllib3/msgpack/setuptools nằm trong **pip tự đóng gói**. Sửa: `apt-get upgrade` lúc build và **gỡ pip khỏi image chạy** → 0.
+- **Cắt xuống bản 2:** Loki, cAdvisor (đúng thứ tự cắt ở mục 9).
 
 ### 4.6 App Flutter (tuần 6)
 - Chụp ảnh / chọn ảnh → `POST /api/receipts` → xem danh sách và trạng thái.
@@ -144,7 +147,7 @@ receiptlens/
 | **2** ✅ | API + DB + upload qua API, quyền tối thiểu | Upload ảnh vào SeaweedFS qua API; 14/14 kiểm tra |
 | **3** ✅ | WAF, HAProxy, autoscaler, Prometheus | k6: số bản sao tăng/giảm theo tải |
 | **4** ✅ | API → RabbitMQ → ocr-worker → API | Ảnh lên ≤ 15 giây có dữ liệu (đạt: 4,5 s); G2 chờ hoá đơn thật |
-| **5** | Dashboard web, Grafana/Loki, CI + Trivy + GHCR | CI xanh; dashboard giám sát |
+| **5** ✅ | Dashboard web, Grafana, CI + Trivy + GHCR | 16/16 kiểm tra; Trivy 0 HIGH/CRITICAL có bản vá |
 | **6** | App Flutter | Chụp và upload từ điện thoại |
 | **7** | Ansible, (tuỳ chọn) k3s, README, video, CV, portfolio | Repo public hoàn chỉnh |
 

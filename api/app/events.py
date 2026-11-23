@@ -3,12 +3,12 @@
 Topology and users are created by bootstrap.py; the `api` user can only publish to the
 `receipts` exchange and read `api.results`.
 """
+
 import json
 import logging
 import threading
-import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pika
 from pika.exceptions import AMQPError
@@ -20,15 +20,21 @@ from .models import Receipt
 
 log = logging.getLogger("receiptlens.events")
 EXCHANGE = "receipts"
-MAX_ATTEMPTS = 3          # OCR requests per receipt before giving up
+MAX_ATTEMPTS = 3  # OCR requests per receipt before giving up
 RESEND_AFTER = timedelta(minutes=2)
 GIVE_UP_AFTER = timedelta(minutes=10)
 
 
 def _params() -> pika.ConnectionParameters:
     s = get_settings()
-    return pika.ConnectionParameters(host=s.rabbit_host, credentials=pika.PlainCredentials(s.rabbit_user, s.rabbit_password),
-                                     heartbeat=30, blocked_connection_timeout=10, connection_attempts=2, retry_delay=1)
+    return pika.ConnectionParameters(
+        host=s.rabbit_host,
+        credentials=pika.PlainCredentials(s.rabbit_user, s.rabbit_password),
+        heartbeat=30,
+        blocked_connection_timeout=10,
+        connection_attempts=2,
+        retry_delay=1,
+    )
 
 
 class Publisher:
@@ -48,9 +54,17 @@ class Publisher:
                         self._chan = self._conn.channel()
                         self._chan.confirm_delivery()
                     # mandatory + confirms: raises if the broker can't route or store it
-                    self._chan.basic_publish(EXCHANGE, routing_key, body, mandatory=True, properties=pika.BasicProperties(
-                        delivery_mode=pika.DeliveryMode.Persistent, content_type="application/json",
-                        message_id=str(uuid.uuid4())))
+                    self._chan.basic_publish(
+                        EXCHANGE,
+                        routing_key,
+                        body,
+                        mandatory=True,
+                        properties=pika.BasicProperties(
+                            delivery_mode=pika.DeliveryMode.Persistent,
+                            content_type="application/json",
+                            message_id=str(uuid.uuid4()),
+                        ),
+                    )
                     return
                 except AMQPError:
                     self._chan = None
@@ -62,8 +76,9 @@ publisher = Publisher()
 
 
 def request_ocr(receipt: Receipt) -> None:
-    publisher.publish("receipt.uploaded", {"id": str(receipt.id), "object_key": receipt.object_key,
-                                           "content_type": receipt.content_type})
+    publisher.publish(
+        "receipt.uploaded", {"id": str(receipt.id), "object_key": receipt.object_key, "content_type": receipt.content_type}
+    )
 
 
 def apply_result(session, msg: dict) -> bool:
@@ -120,9 +135,13 @@ def sweep(session, now: datetime | None = None) -> tuple[int, int]:
 
     Rows are locked with SKIP LOCKED so several API replicas never resend the same receipt.
     """
-    now = now or datetime.now(timezone.utc)
-    stale = session.scalars(select(Receipt).where(
-        Receipt.status == "uploaded", Receipt.updated_at < now - RESEND_AFTER).with_for_update(skip_locked=True).limit(50))
+    now = now or datetime.now(UTC)
+    stale = session.scalars(
+        select(Receipt)
+        .where(Receipt.status == "uploaded", Receipt.updated_at < now - RESEND_AFTER)
+        .with_for_update(skip_locked=True)
+        .limit(50)
+    )
     resent = failed = 0
     for receipt in stale:
         if receipt.ocr_attempts >= MAX_ATTEMPTS:

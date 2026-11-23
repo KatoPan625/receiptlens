@@ -81,6 +81,7 @@ def test_rejects_non_image_even_with_image_content_type(client):
 
 def test_rejects_oversized_upload(client, monkeypatch):
     from app import config
+
     monkeypatch.setattr(config.get_settings(), "max_upload_mb", 1)
     r = upload(client, data=PNG + b"\x00" * (1024 * 1024))
     assert r.status_code == 413
@@ -88,8 +89,9 @@ def test_rejects_oversized_upload(client, monkeypatch):
 
 def test_patch_marks_corrected_and_feeds_stats(client):
     rid = upload(client).json()["id"]
-    r = client.patch(f"/receipts/{rid}", json={"merchant": "Cafe ABC", "total_vnd": 125000,
-                                               "purchased_at": "2026-11-20T09:30:00+07:00"})
+    r = client.patch(
+        f"/receipts/{rid}", json={"merchant": "Cafe ABC", "total_vnd": 125000, "purchased_at": "2026-11-20T09:30:00+07:00"}
+    )
     assert r.status_code == 200
     assert r.json()["status"] == "corrected" and r.json()["total_vnd"] == 125000
     assert client.get("/stats/monthly").json() == [{"month": "2026-11", "count": 1, "total_vnd": 125000}]
